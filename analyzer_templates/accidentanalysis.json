@@ -1,0 +1,101 @@
+{
+	"description": "Vehicle accident image analyzer",
+	"scenario": "document",
+	"fieldSchema": {
+		"fields": {
+			"vehicle_make": {
+				"type": "string",
+				"method": "generate",
+				"description": "manufacturer of the vehicle"
+			},
+			"vehicle_type": {
+				"type": "string",
+				"method": "generate",
+				"description": "Car, Bike, Truck, etc"
+			},
+			"vehicle_model": {
+				"type": "string",
+				"method": "generate",
+				"description": "name of the model"
+			},
+			"vehicle_color": {
+				"type": "string",
+				"method": "generate",
+				"description": "color"
+			},
+			"scene_type": {
+				"type": "string",
+				"method": "generate",
+				"description": "Road, parking lot, garage, etc."
+			},
+			"damage_detected": {
+				"type": "boolean",
+				"method": "generate",
+				"description": "Whether any damage was found in the image"
+			},
+			"damage_locations": {
+				"type": "array",
+				"method": "generate",
+				"description": "Specific car parts damaged (e.g., front bumper, windshield)",
+				"items": {
+					"type": "string",
+					"method": "generate"
+				}
+			},
+			"damage_type": {
+				"type": "array",
+				"method": "generate",
+				"description": "Dent, crack, scratch, broken part",
+				"items": {
+					"type": "string",
+					"method": "generate"
+				}
+			},
+			"damage_severity": {
+				"type": "string",
+				"method": "classify",
+				"description": "Overall severity of the damage",
+				"enum": [
+					"low",
+					"medium",
+					"high"
+				],
+				"enumDescriptions": {
+					"low": "",
+					"medium": "",
+					"high": ""
+				}
+			},
+			"airbag_status": {
+				"type": "string",
+				"method": "generate",
+				"description": "airbag deployed or not, if not in scene"
+			},
+			"glass_damage": {
+				"type": "string",
+				"method": "generate",
+				"description": "Presence of windshield or window cracks"
+			},
+			"tire_or_wheel_damage": {
+				"type": "string",
+				"method": "generate",
+				"description": "Detect if wheels/tires are damaged or tire is flat."
+			},
+			"impact_zone": {
+				"type": "string",
+				"method": "generate",
+				"description": "Primary point of collision"
+			},
+			"damage_description_text": {
+				"type": "string",
+				"method": "generate",
+				"description": "Human-readable summary of the damage"
+			},
+			"tow_required": {
+				"type": "string",
+				"method": "generate",
+				"description": "Whether towing is necessary. if wheel is flat, then necessary."
+			}
+		}
+	}
+}
