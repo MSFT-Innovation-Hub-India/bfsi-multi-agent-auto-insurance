@@ -23,7 +23,8 @@ import {
   X,
   Calculator,
   Gavel,
-  Zap
+  Zap,
+  Eye
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -52,6 +53,7 @@ import { useDashboardStore, Claim, Agent } from '@/lib/dashboard-store';
 import { motion, AnimatePresence } from 'framer-motion';
 import axios from 'axios';
 import { processClaimRealtime } from '@/lib/api-service-realtime';
+import { DocumentViewer } from '@/components/DocumentViewer';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001';
 
@@ -122,6 +124,8 @@ export default function DashboardPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'processing' | 'approved' | 'flagged'>('all');
   const [processingDialogOpen, setProcessingDialogOpen] = useState(false);
+  const [documentViewerOpen, setDocumentViewerOpen] = useState(false);
+  const [selectedClaimForDocs, setSelectedClaimForDocs] = useState<string | null>(null);
   const [workflowStatus, setWorkflowStatus] = useState<{
     step: number;
     agent: string;
@@ -1265,29 +1269,44 @@ export default function DashboardPage() {
                                 </Badge>
                               </td>
                               <td className="py-4 px-4 text-center">
-                                <Button
-                                  size="sm"
-                                  onClick={() => handleProcessClaim(claim)}
-                                  disabled={claim.status === 'processing' || claim.status === 'approved'}
-                                  className={claim.status === 'pending' || claim.status === 'flagged' ? 'bg-blue-600 hover:bg-blue-700' : ''}
-                                >
-                                  {claim.status === 'processing' ? (
-                                    <>
-                                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                      Processing
-                                    </>
-                                  ) : claim.status === 'approved' ? (
-                                    <>
-                                      <CheckCircle className="mr-2 h-4 w-4" />
-                                      Completed
-                                    </>
-                                  ) : (
-                                    <>
-                                      <Play className="mr-2 h-4 w-4" />
-                                      Process
-                                    </>
-                                  )}
-                                </Button>
+                                <div className="flex items-center justify-center space-x-2">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedClaimForDocs(claim.id);
+                                      setDocumentViewerOpen(true);
+                                    }}
+                                    className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                    title="View Documents"
+                                  >
+                                    <Eye className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    onClick={() => handleProcessClaim(claim)}
+                                    disabled={claim.status === 'processing' || claim.status === 'approved'}
+                                    className={claim.status === 'pending' || claim.status === 'flagged' ? 'bg-blue-600 hover:bg-blue-700' : ''}
+                                  >
+                                    {claim.status === 'processing' ? (
+                                      <>
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        Processing
+                                      </>
+                                    ) : claim.status === 'approved' ? (
+                                      <>
+                                        <CheckCircle className="mr-2 h-4 w-4" />
+                                        Completed
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Play className="mr-2 h-4 w-4" />
+                                        Process
+                                      </>
+                                    )}
+                                  </Button>
+                                </div>
                               </td>
                             </tr>
                           ))
@@ -1986,6 +2005,18 @@ export default function DashboardPage() {
         </div>
       </AnimatePresence>,
       document.body
+    )}
+
+    {/* Document Viewer Component */}
+    {selectedClaimForDocs && (
+      <DocumentViewer
+        claimId={selectedClaimForDocs}
+        isOpen={documentViewerOpen}
+        onClose={() => {
+          setDocumentViewerOpen(false);
+          setSelectedClaimForDocs(null);
+        }}
+      />
     )}
   </>
   );

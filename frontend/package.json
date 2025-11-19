@@ -4,6 +4,7 @@
   "private": true,
   "dependencies": {
     "@azure/cosmos": "^3.17.3",
+    "@azure/storage-blob": "^12.29.1",
     "@radix-ui/react-accordion": "^1.2.1",
     "@radix-ui/react-avatar": "^1.1.10",
     "@radix-ui/react-dialog": "^1.1.15",
