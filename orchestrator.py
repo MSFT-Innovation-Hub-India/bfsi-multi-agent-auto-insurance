@@ -182,6 +182,33 @@ class CosmosMemoryManager:
         except Exception as e:
             print(f"❌ Error retrieving latest response: {e}")
             return {}
+    
+    async def get_all_agent_responses(self, claim_id: str) -> list:
+        """Get all agent responses for a specific claim"""
+        if not self.container:
+            return []
+        
+        try:
+            query = """
+            SELECT c.agent_type, c.response_data, c.extracted_data, c.timestamp, c.status
+            FROM c 
+            WHERE c.claim_id = @claim_id 
+            ORDER BY c.timestamp ASC
+            """
+            
+            items = list(self.container.query_items(
+                query=query,
+                parameters=[
+                    {"name": "@claim_id", "value": claim_id}
+                ],
+                enable_cross_partition_query=True
+            ))
+            
+            return items
+            
+        except Exception as e:
+            print(f"❌ Error retrieving all agent responses: {e}")
+            return []
 
 class AutoInsuranceOrchestrator:
     """

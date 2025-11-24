@@ -99,9 +99,9 @@ export default function AgentWorkflowPage() {
         });
 
         // Map agent results to our state structure
-        // Step 1: Policy Basic Details
-        if (state.agents.policy_basic_details) {
-          const agent = state.agents.policy_basic_details;
+        // Step 1: Policy Insight Agent
+        if (state.agents['Policy Insight Agent']) {
+          const agent = state.agents['Policy Insight Agent'];
           setAgentStates(prev => ({
             ...prev,
             1: agent.status === 'completed' ? 'completed' : 
@@ -112,9 +112,9 @@ export default function AgentWorkflowPage() {
           }
         }
 
-        // Step 2: Policy Analysis
-        if (state.agents.policy_analysis) {
-          const agent = state.agents.policy_analysis;
+        // Step 2: Coverage Assessment Agent
+        if (state.agents['Coverage Assessment Agent']) {
+          const agent = state.agents['Coverage Assessment Agent'];
           setAgentStates(prev => ({
             ...prev,
             2: agent.status === 'completed' ? 'completed' : 
@@ -125,9 +125,9 @@ export default function AgentWorkflowPage() {
           }
         }
 
-        // Step 3: Inspection Analysis (mapped as Damage Assessor)
-        if (state.agents.inspection_analysis) {
-          const agent = state.agents.inspection_analysis;
+        // Step 3: Inspection Agent
+        if (state.agents['Inspection Agent']) {
+          const agent = state.agents['Inspection Agent'];
           setAgentStates(prev => ({
             ...prev,
             3: agent.status === 'completed' ? 'completed' : 
@@ -138,9 +138,9 @@ export default function AgentWorkflowPage() {
           }
         }
 
-        // Step 4: Bill Analysis (mapped as Fraud Detector)
-        if (state.agents.bill_analysis) {
-          const agent = state.agents.bill_analysis;
+        // Step 4: Bill Analysis Agent
+        if (state.agents['Bill Analysis Agent']) {
+          const agent = state.agents['Bill Analysis Agent'];
           setAgentStates(prev => ({
             ...prev,
             4: agent.status === 'completed' ? 'completed' : 
@@ -151,9 +151,9 @@ export default function AgentWorkflowPage() {
           }
         }
 
-        // Step 5: Final Recommendation (mapped as Settlement Calculator)
-        if (state.agents.final_recommendation) {
-          const agent = state.agents.final_recommendation;
+        // Step 5: Final Decision Agent
+        if (state.agents['Final Decision Agent']) {
+          const agent = state.agents['Final Decision Agent'];
           setAgentStates(prev => ({
             ...prev,
             5: agent.status === 'completed' ? 'completed' : 
@@ -169,7 +169,7 @@ export default function AgentWorkflowPage() {
         console.log('✅ Processing completed:', finalState);
         setWorkflowStatus({
           status: 'completed',
-          currentStep: finalState.total_steps,
+          currentStep: 5,
           progress: 100,
         });
       },

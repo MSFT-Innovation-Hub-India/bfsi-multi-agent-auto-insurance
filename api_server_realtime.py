@@ -13,8 +13,9 @@ import json
 from datetime import datetime
 import uvicorn
 
-# Import the orchestrator
+# Import the orchestrator and blob service
 from orchestrator import AutoInsuranceOrchestrator, ClaimData
+from blob_service import get_blob_service
 
 # ============================================================
 # STANDARDIZED AGENT NAME MAPPING
@@ -564,6 +565,84 @@ async def health_check():
         "mode": "real-time-streaming"
     }
 
+# ============================================================
+# BLOB STORAGE ENDPOINTS
+# ============================================================
+
+@app.get("/api/blob/list-all")
+async def list_all_documents():
+    """List all documents in the vehicle-insurance container"""
+    try:
+        blob_service = get_blob_service()
+        documents = blob_service.list_all_documents()
+        return {"documents": documents, "count": len(documents)}
+    except Exception as e:
+        print(f"Error listing all documents: {e}")
+        raise HTTPException(status_code=500, detail=f"Error listing documents: {str(e)}")
+
+@app.get("/api/blob/list/{claim_id}")
+async def list_claim_documents(claim_id: str):
+    """List all documents for a specific claim"""
+    try:
+        blob_service = get_blob_service()
+        documents = blob_service.list_claim_documents(claim_id)
+        return documents
+    except Exception as e:
+        print(f"Error listing documents for claim {claim_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error listing claim documents: {str(e)}")
+
+class SasUrlRequest(BaseModel):
+    document_name: str
+    claim_id: str
+    expiry_hours: Optional[int] = 24
+
+@app.post("/api/blob/sas-url")
+async def get_sas_url(request: SasUrlRequest):
+    """Generate SAS URL for a document"""
+    try:
+        blob_service = get_blob_service()
+        url = blob_service.get_document_sas_url(
+            request.document_name,
+            request.claim_id,
+            request.expiry_hours
+        )
+        return {"url": url}
+    except Exception as e:
+        print(f"Error generating SAS URL: {e}")
+        raise HTTPException(status_code=500, detail=f"Error generating SAS URL: {str(e)}")
+
+# ============================================================
+# COSMOS DB / AGENT OUTPUTS ENDPOINTS
+# ============================================================
+
+@app.get("/api/claims/{claim_id}/outputs")
+async def get_claim_agent_outputs(claim_id: str):
+    """Get all agent outputs for a specific claim from Cosmos DB"""
+    try:
+        if not orchestrator or not orchestrator.memory_manager:
+            raise HTTPException(status_code=503, detail="Orchestrator or memory manager not initialized")
+        
+        # Get all agent responses from Cosmos DB
+        agent_responses = await orchestrator.memory_manager.get_all_agent_responses(claim_id)
+        
+        # Format the responses for frontend
+        outputs = []
+        for response in agent_responses:
+            outputs.append({
+                "claim_id": claim_id,
+                "agent_name": response.get("agent_type", ""),
+                "response": response.get("response_data", ""),
+                "timestamp": response.get("timestamp", ""),
+                "status": response.get("status", "completed")
+            })
+        
+        return {"outputs": outputs, "count": len(outputs)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error fetching agent outputs for claim {claim_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error fetching agent outputs: {str(e)}")
+
 @app.get("/")
 async def root():
     """Root endpoint with API information"""
@@ -573,6 +652,10 @@ async def root():
         "mode": "Server-Sent Events (SSE) Streaming",
         "endpoints": {
             "process_claim_stream": "/process-claim-stream (POST) - Real-time streaming",
+            "list_all_documents": "/api/blob/list-all (GET) - List all documents",
+            "list_claim_documents": "/api/blob/list/{claim_id} (GET) - List documents for claim",
+            "get_sas_url": "/api/blob/sas-url (POST) - Generate SAS URL for document",
+            "get_claim_outputs": "/api/claims/{claim_id}/outputs (GET) - Get agent outputs from Cosmos DB",
             "health": "/health",
             "docs": "/docs"
         }

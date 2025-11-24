@@ -246,7 +246,7 @@ export default function DashboardPage() {
         claimDescription,
         
         // onUpdate callback - called for each agent update
-        (state) => {
+        (state: any) => {
           console.log('📊 Real-time state update:', state);
           
           // Map agent names to step numbers
@@ -272,7 +272,7 @@ export default function DashboardPage() {
           const newAgentStates: { [key: number]: 'pending' | 'processing' | 'completed' | 'failed' } = { ...agentStates };
           const newAgentResponses: { [key: number]: string } = { ...agentResponses };
           
-          Object.entries(state.agents).forEach(([agentKey, agent]) => {
+          Object.entries(state.agents).forEach(([agentKey, agent]: [string, any]) => {
             const step = agentStepMap[agent.agent_name];
             if (step) {
               if (agent.status === 'completed') {
@@ -297,7 +297,7 @@ export default function DashboardPage() {
           console.log('📝 Updated agent responses:', newAgentResponses);
 
           // Update agent statuses in the dashboard
-          Object.values(state.agents).forEach((agent) => {
+          Object.values(state.agents).forEach((agent: any) => {
             if (agent.status === 'completed') {
               updateAgentStatus(agent.agent_name, 'active');
             } else if (agent.status === 'processing') {
@@ -309,7 +309,7 @@ export default function DashboardPage() {
         },
         
         // onComplete callback - called when all agents finish
-        (finalState) => {
+        (finalState: any) => {
           console.log('✅ Processing complete', finalState);
           setWorkflowStatus({
             step: 5,
@@ -384,7 +384,7 @@ export default function DashboardPage() {
     setResponsePopup(null);
   };
 
-  const filteredClaims = claims.filter(claim => {
+  const filteredClaims = claims.filter((claim: Claim) => {
     const matchesSearch = claim.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
       claim.claimantName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       claim.policyNumber.toLowerCase().includes(searchTerm.toLowerCase());
@@ -434,7 +434,7 @@ export default function DashboardPage() {
     },
     {
       title: 'Active Agents',
-      value: agents.filter(a => a.status === 'active').length.toString(),
+      value: agents.filter((a: Agent) => a.status === 'active').length.toString(),
       change: `${agents.length} total`,
       icon: Users,
       color: 'text-blue-600',
@@ -737,7 +737,7 @@ export default function DashboardPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    {claims.slice(0, 5).map((claim) => (
+                    {claims.slice(0, 5).map((claim: Claim) => (
                       <div 
                         key={claim.id} 
                         className="flex items-center justify-between p-4 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors cursor-pointer group border border-blue-100"
@@ -848,7 +848,7 @@ export default function DashboardPage() {
               <div>
                 <h3 className="text-xl font-semibold text-slate-900 mb-4">🤖 AI Agent Performance</h3>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-                  {agents.map((agent, index) => (
+                  {agents.map((agent: Agent, index: number) => (
                     <motion.div
                       key={agent.id}
                       initial={{ opacity: 0, scale: 0.9 }}
@@ -860,7 +860,7 @@ export default function DashboardPage() {
                           <div className="flex flex-col items-center text-center space-y-3">
                             <Avatar className="h-14 w-14">
                               <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-600 text-white font-bold text-lg">
-                                {agent.name.split(' ').map(n => n[0]).join('')}
+                                {agent.name.split(' ').map((n: string) => n[0]).join('')}
                               </AvatarFallback>
                             </Avatar>
                             <div className="w-full">
@@ -940,8 +940,8 @@ export default function DashboardPage() {
                       </ResponsiveContainer>
                       <div className="mt-4 p-3 bg-green-50 rounded-lg border border-green-200">
                         <p className="text-sm text-slate-700">
-                          <strong>Total Tasks:</strong> {agents.reduce((sum, agent) => sum + agent.tasksHandled, 0)} | 
-                          <strong className="ml-2">Active Agents:</strong> {agents.filter(a => a.status === 'active').length}/{agents.length}
+                          <strong>Total Tasks:</strong> {agents.reduce((sum: number, agent: Agent) => sum + agent.tasksHandled, 0)} | 
+                          <strong className="ml-2">Active Agents:</strong> {agents.filter((a: Agent) => a.status === 'active').length}/{agents.length}
                         </p>
                       </div>
                     </CardContent>
@@ -1030,7 +1030,7 @@ export default function DashboardPage() {
                             <span className="font-medium text-green-900">Active</span>
                           </div>
                           <span className="text-2xl font-bold text-green-600">
-                            {agents.filter(a => a.status === 'active').length}
+                            {agents.filter((a: Agent) => a.status === 'active').length}
                           </span>
                         </div>
                         <div className="flex items-center justify-between p-4 bg-blue-50 rounded-lg border border-blue-200">
@@ -1039,7 +1039,7 @@ export default function DashboardPage() {
                             <span className="font-medium text-blue-900">Processing</span>
                           </div>
                           <span className="text-2xl font-bold text-blue-600">
-                            {agents.filter(a => a.status === 'processing').length}
+                            {agents.filter((a: Agent) => a.status === 'processing').length}
                           </span>
                         </div>
                         <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg border border-slate-200">
@@ -1048,7 +1048,7 @@ export default function DashboardPage() {
                             <span className="font-medium text-slate-900">Idle</span>
                           </div>
                           <span className="text-2xl font-bold text-slate-600">
-                            {agents.filter(a => a.status === 'idle').length}
+                            {agents.filter((a: Agent) => a.status === 'idle').length}
                           </span>
                         </div>
                       </div>
@@ -1126,7 +1126,7 @@ export default function DashboardPage() {
                     <div className="text-center">
                       <CheckCircle className="h-8 w-8 text-green-600 mx-auto mb-2" />
                       <p className="text-2xl font-bold text-green-900">
-                        {claims.filter(c => c.status === 'approved').length}
+                        {claims.filter((c: Claim) => c.status === 'approved').length}
                       </p>
                       <p className="text-xs text-green-700 mt-1">Approved</p>
                     </div>
@@ -1137,7 +1137,7 @@ export default function DashboardPage() {
                     <div className="text-center">
                       <Clock className="h-8 w-8 text-yellow-600 mx-auto mb-2" />
                       <p className="text-2xl font-bold text-yellow-900">
-                        {claims.filter(c => c.status === 'pending').length}
+                        {claims.filter((c: Claim) => c.status === 'pending').length}
                       </p>
                       <p className="text-xs text-yellow-700 mt-1">Pending</p>
                     </div>
@@ -1148,7 +1148,7 @@ export default function DashboardPage() {
                     <div className="text-center">
                       <Activity className="h-8 w-8 text-blue-600 mx-auto mb-2" />
                       <p className="text-2xl font-bold text-blue-900">
-                        {claims.filter(c => c.status === 'processing').length}
+                        {claims.filter((c: Claim) => c.status === 'processing').length}
                       </p>
                       <p className="text-xs text-blue-700 mt-1">Processing</p>
                     </div>
@@ -1159,7 +1159,7 @@ export default function DashboardPage() {
                     <div className="text-center">
                       <AlertTriangle className="h-8 w-8 text-red-600 mx-auto mb-2" />
                       <p className="text-2xl font-bold text-red-900">
-                        {claims.filter(c => c.status === 'flagged').length}
+                        {claims.filter((c: Claim) => c.status === 'flagged').length}
                       </p>
                       <p className="text-xs text-red-700 mt-1">Flagged</p>
                     </div>
@@ -1176,7 +1176,7 @@ export default function DashboardPage() {
                         <CardDescription>Click "Process" to start AI workflow analysis</CardDescription>
                       </div>
                       <div className="text-sm text-slate-600">
-                        Total Value: <strong className="text-blue-600">₹{claims.reduce((sum, c) => sum + c.claimAmount, 0).toLocaleString('en-IN')}</strong>
+                        Total Value: <strong className="text-blue-600">₹{claims.reduce((sum: number, c: Claim) => sum + c.claimAmount, 0).toLocaleString('en-IN')}</strong>
                       </div>
                     </div>
                     
@@ -1197,7 +1197,7 @@ export default function DashboardPage() {
                         onClick={() => setStatusFilter('pending')}
                         className={statusFilter === 'pending' ? 'bg-yellow-600 text-white' : ''}
                       >
-                        Pending ({claims.filter(c => c.status === 'pending').length})
+                        Pending ({claims.filter((c: Claim) => c.status === 'pending').length})
                       </Button>
                       <Button
                         size="sm"
@@ -1205,7 +1205,7 @@ export default function DashboardPage() {
                         onClick={() => setStatusFilter('processing')}
                         className={statusFilter === 'processing' ? 'bg-blue-600 text-white' : ''}
                       >
-                        Processing ({claims.filter(c => c.status === 'processing').length})
+                        Processing ({claims.filter((c: Claim) => c.status === 'processing').length})
                       </Button>
                       <Button
                         size="sm"
@@ -1213,7 +1213,7 @@ export default function DashboardPage() {
                         onClick={() => setStatusFilter('approved')}
                         className={statusFilter === 'approved' ? 'bg-green-600 text-white' : ''}
                       >
-                        Approved ({claims.filter(c => c.status === 'approved').length})
+                        Approved ({claims.filter((c: Claim) => c.status === 'approved').length})
                       </Button>
                       <Button
                         size="sm"
@@ -1221,7 +1221,7 @@ export default function DashboardPage() {
                         onClick={() => setStatusFilter('flagged')}
                         className={statusFilter === 'flagged' ? 'bg-red-600 text-white' : ''}
                       >
-                        Flagged ({claims.filter(c => c.status === 'flagged').length})
+                        Flagged ({claims.filter((c: Claim) => c.status === 'flagged').length})
                       </Button>
                     </div>
                   </div>
@@ -1254,7 +1254,7 @@ export default function DashboardPage() {
                             </td>
                           </tr>
                         ) : (
-                          filteredClaims.map((claim) => (
+                          filteredClaims.map((claim: Claim) => (
                             <tr key={claim.id} className="border-b border-slate-100 hover:bg-blue-50 transition-colors">
                               <td className="py-4 px-4 text-sm font-medium text-blue-600">{claim.id}</td>
                               <td className="py-4 px-4 text-sm font-semibold text-slate-900">{claim.claimantName}</td>
