@@ -15,9 +15,19 @@ from dataclasses import dataclass
 from azure.cosmos import CosmosClient, PartitionKey
 from datetime import datetime
 import json
+from pathlib import Path
 
 # Load environment variables
 load_dotenv()
+
+# Load instruction templates
+INSTRUCTIONS_DIR = Path(__file__).parent / "instructions"
+
+def load_instruction(filename: str) -> str:
+    """Load instruction template from file"""
+    filepath = INSTRUCTIONS_DIR / filename
+    with open(filepath, "r") as f:
+        return f.read()
 
 @dataclass
 class ClaimData:
@@ -182,11 +192,11 @@ class AutoInsuranceOrchestrator:
     """
     
     def __init__(self):
-        # Azure AI Project configuration
-        self.ENDPOINT = "https://eastus2.api.azureml.ms"
-        self.RESOURCE_GROUP = "rg-kushikote-9315_ai"
-        self.SUBSCRIPTION_ID = "055cefeb-8cfd-4996-b2d5-ee32fa7cf4d4"
-        self.PROJECT_NAME = "docstorage"
+        # Azure AI Project configuration from environment variables
+        self.ENDPOINT = os.getenv("AZURE_ENDPOINT")
+        self.RESOURCE_GROUP = os.getenv("AZURE_RESOURCE_GROUP")
+        self.SUBSCRIPTION_ID = os.getenv("AZURE_SUBSCRIPTION_ID")
+        self.PROJECT_NAME = os.getenv("AZURE_PROJECT_NAME")
         
         # Initialize Azure AI Project client
         self.project_client = AIProjectClient(
@@ -259,24 +269,14 @@ class AutoInsuranceOrchestrator:
                 }
             )
             
+            # Load policy coverage instructions
+            policy_coverage_instructions = load_instruction("policy_coverage_agent.txt")
+            
             # Create policy agent
             policy_agent = self.project_client.agents.create_agent(
                 model="gpt-4o",
                 name="orchestrator-policy-agent",
-                instructions=(
-                    "You are an AUTO INSURANCE POLICY EXPERT providing authoritative vehicle insurance guidance. "
-                    "CRITICAL: You MUST ONLY analyze policy coverage and extract specific monetary values from the indexed policy documents. "
-                    "DO NOT reference any repair costs, bill amounts, or cost estimates - you only have access to policy documents. "
-                    "Analyze the claim type against policy coverage and provide a structured response including: "
-                    "1. Coverage eligibility for the type of damage described (collision, comprehensive, etc.) "
-                    "2. Policy coverage limits with SPECIFIC IDV/Sum Assured amount in ₹ from policy documents "
-                    "3. Relevant exclusions or limitations from policy terms "
-                    "4. Required deductibles with SPECIFIC deductible amount in ₹ from policy documents "
-                    "5. Claims processing requirements per policy "
-                    "6. General coverage determination framework (what would be covered vs excluded) "
-                    "IMPORTANT: Focus ONLY on policy terms and coverage rules. Do NOT estimate costs or reference specific repair amounts. "
-                    "Use phrases like 'IDV is ₹X,XX,XXX' and 'deductible is ₹X,XXX' to ensure values are extractable from policy documents."
-                ),
+                instructions=policy_coverage_instructions,
                 tools=policy_search.definitions,
                 tool_resources=policy_search.resources,
             )
@@ -349,27 +349,21 @@ class AutoInsuranceOrchestrator:
                 }
             )
             
+            # Load inspection orchestrator instructions template
+            inspection_template = load_instruction("inspection_orchestrator_agent.txt")
+            
+            # Replace placeholders with actual values
+            inspection_instructions = inspection_template.format(
+                idv=f"{extracted_policy_data.get('idv', 0):,}",
+                deductible=f"{extracted_policy_data.get('deductible', 0):,}",
+                coverage_eligible=extracted_policy_data.get('coverage_eligible', 'Unknown')
+            )
+            
             # Create inspection agent with enhanced instructions including memory context
             inspection_agent = self.project_client.agents.create_agent(
                 model="gpt-4o",
                 name="orchestrator-inspection-agent",
-                instructions=(
-                    "You are an AUTO INSURANCE INSPECTION AGENT conducting vehicle damage assessment. "
-                    "You have access to previous policy analysis from memory with the following details: "
-                    f"- Vehicle IDV: ₹{extracted_policy_data.get('idv', 0):,} "
-                    f"- Policy Deductible: ₹{extracted_policy_data.get('deductible', 0):,} "
-                    f"- Coverage Eligible: {extracted_policy_data.get('coverage_eligible', 'Unknown')} "
-                    "Based on this policy information and your inspection findings, focus on: "
-                    "1. Damage assessment consistent with the reported incident using indexed inspection documents "
-                    "2. Verification of claim authenticity and damage progression "
-                    "3. Safety concerns and repairability determination "
-                    "4. Cost estimates and total loss evaluation (compare against IDV from policy memory) "
-                    "5. Fraud indicators or pre-existing damage "
-                    "6. Market-based repair cost estimates in Indian Rupees (₹) using industry standards "
-                    "IMPORTANT: Generate realistic cost estimates based on the actual damage found in indexed documents. "
-                    "Do NOT use any external cost figures - provide estimates based on inspection findings and market rates. "
-                    "Provide a structured inspection report with clear cost breakdown and recommendations."
-                ),
+                instructions=inspection_instructions,
                 tools=inspection_search.definitions,
                 tool_resources=inspection_search.resources,
             )
@@ -463,36 +457,22 @@ class AutoInsuranceOrchestrator:
                 }
             )
             
+            # Load bill reimbursement instructions template
+            bill_template = load_instruction("bill_reimbursement_orchestrator_agent.txt")
+            
+            # Replace placeholders with actual values
+            bill_instructions = bill_template.format(
+                idv=f"{policy_data.get('idv', 0):,}",
+                deductible=f"{policy_data.get('deductible', 0):,}",
+                inspection_estimate=f"{inspection_data.get('repair_cost_estimate', 0):,}",
+                total_loss_status=str(inspection_data.get('total_loss_indicated', False))
+            )
+            
             # Create bill agent with full memory context
             bill_agent = self.project_client.agents.create_agent(
                 model="gpt-4o",
                 name="orchestrator-bill-reimbursement-agent",
-                instructions=(
-                    "You are a VEHICLE REPAIR BILL REIMBURSEMENT AGENT with access to complete claim memory. "
-                    "MEMORY CONTEXT AVAILABLE: "
-                    f"- Policy IDV: ₹{policy_data.get('idv', 0):,} "
-                    f"- Policy Deductible: ₹{policy_data.get('deductible', 0):,} "
-                    f"- Inspection Estimate: ₹{inspection_data.get('repair_cost_estimate', 0):,} "
-                    f"- Total Loss Status: {inspection_data.get('total_loss_indicated', False)} "
-                    "CRITICAL: You MUST extract and provide specific monetary values from the indexed bill documents. "
-                    "Your role is to: "
-                    "1. Retrieve actual repair bill data from the index and extract specific amounts in Indian Rupees (₹) "
-                    "2. CATEGORIZE each repair item by component type (plastic parts, metal work, glass, electrical, labor, etc.) "
-                    "3. Compare ACTUAL bill amounts against the inspection estimate from memory "
-                    "4. Validate costs against policy IDV and deductible from memory "
-                    "5. Calculate exact reimbursement considering component-wise depreciation rates: "
-                    "   - Plastic parts: 50% depreciation (bumpers, plastic panels) "
-                    "   - Fiber parts: 30% depreciation (fiber panels, spoilers) "
-                    "   - Metal work: 0% depreciation (painting, denting of metal parts) "
-                    "   - Glass: 0% depreciation (windshield, windows) "
-                    "   - Electrical: 0% depreciation (lights, wiring) "
-                    "   - Labor: 0% depreciation "
-                    "   - Safety items (airbags): 0% depreciation "
-                    "6. Flag any discrepancies between inspection estimate and actual bills "
-                    "7. Provide detailed breakdown: Item-wise costs, Depreciation by category, Final Reimbursement "
-                    "IMPORTANT: Always reference the memory context and provide component-wise cost breakdown with depreciation analysis. "
-                    "Use phrases like 'Front bumper replacement: ₹XX,XXX (plastic - 50% depreciation applicable)' for each major component."
-                ),
+                instructions=bill_instructions,
                 tools=bill_search.definitions,
                 tool_resources=bill_search.resources,
             )
@@ -577,24 +557,14 @@ class AutoInsuranceOrchestrator:
         """Synthesize final claim recommendation using agent-based analysis"""
         print("\n🔍 Step 4: Synthesizing Final Recommendation...")
         
+        # Load synthesis instructions
+        synthesis_instructions = load_instruction("synthesis_agent.txt")
+        
         # Create synthesis agent for final recommendation
         synthesis_agent = self.project_client.agents.create_agent(
             model="gpt-4o",
             name="orchestrator-synthesis-agent",
-            instructions=(
-                "You are an AUTO INSURANCE CLAIM PROCESSING SPECIALIST providing final claim recommendations. "
-                "Based on the comprehensive analysis from three specialized agents, provide a decisive final claim decision. "
-                "Your role is to: "
-                "1. Review all agent analyses and extract key financial data (IDV, deductible, repair costs, depreciation) "
-                "2. Make a clear CLAIM DECISION: Approve/Deny/Partial Approval "
-                "3. Calculate exact COVERAGE AMOUNT with detailed breakdown "
-                "4. Determine CUSTOMER RESPONSIBILITY including deductibles and non-covered costs "
-                "5. Provide comprehensive JUSTIFICATION referencing specific findings from each agent "
-                "6. Outline clear NEXT STEPS for claim closure "
-                "7. Include detailed cost breakdown showing: Total Repair Cost, Depreciation, Deductible, Final Reimbursement "
-                "IMPORTANT: Be decisive, use specific monetary amounts, and ensure consistency across all agent findings. "
-                "Format your response as a comprehensive claim decision report with clear sections and professional formatting."
-            ),
+            instructions=synthesis_instructions,
             tools=[],  # No search tools needed for synthesis
         )
         

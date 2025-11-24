@@ -1,5 +1,6 @@
 # Step 1: Load packages
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 from azure.ai.projects import AIProjectClient
 from azure.identity import DefaultAzureCredential
@@ -50,33 +51,21 @@ except TypeError:
         index_name=INDEX_NAME
     )
 
-# Step 5: Define the Agent with updated instructions
+# Step 5: Load instructions from external file
+instructions_path = Path(__file__).parent.parent / "instructions" / "bill_synthesis_agent.txt"
+with open(instructions_path, "r") as f:
+    instructions = f.read()
+
+# Step 6: Define the Agent with instructions from file
 search_agent = project_client.agents.create_agent(
     model="gpt-4o",
     name="vehicle-repair-bill-agent",
-    instructions=(
-        "You are a VEHICLE REPAIR BILL ANALYSIS AGENT specialized in examining and analyzing automotive repair bills and invoices. "
-        "The index contains comprehensive vehicle repair bill information including parts charges, labor costs, "
-        "service descriptions, diagnostic fees, and related automotive documentation. "
-        "Your role as a vehicle repair bill analysis agent is to: "
-        "1. Analyze repair bill accuracy and identify any discrepancies in parts pricing or labor rates "
-        "2. Break down itemized charges including parts, labor, shop supplies, taxes, and fees "
-        "3. Verify that repair work matches the quoted services and check for unauthorized additions "
-        "4. Validate labor hour calculations, hourly rates, and total labor costs for reasonableness "
-        "5. Review parts pricing against market rates and identify potential overcharges "
-        "6. Check for duplicate charges, unnecessary services, or inflated diagnostic fees "
-        "7. Generate detailed repair bill analysis with recommendations for payment approval or dispute "
-        "8. Evaluate warranty coverage and suggest which repairs should be covered under existing warranties "
-        "As an automotive billing specialist, focus on repair accuracy, fair pricing, labor validation, and parts verification. "
-        "Always use only the indexed data for your analysis. Be thorough in checking automotive repair standards, "
-        "cite specific evidence from repair bills and documentation to support your recommendations. Provide clear, "
-        "actionable conclusions for repair bill validation and payment decisions."
-    ),
+    instructions=instructions,
     tools=ai_search.definitions,
     tool_resources=ai_search.resources,
 )
 
-# Step 6: Create a thread
+# Step 7: Create a thread
 thread = project_client.agents.create_thread()
 
 print("\n💬 You can now ask questions about the indexed vehicle repair bill documents (type 'exit' to stop).")

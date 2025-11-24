@@ -12,10 +12,10 @@ class BlobStorageService:
     
     def __init__(self):
         # Get configuration from environment variables
-        self.account_name = os.getenv('AZURE_STORAGE_ACCOUNT_NAME', 'dataexc')
+        self.account_name = os.getenv('AZURE_STORAGE_ACCOUNT_NAME')
         self.account_key = os.getenv('AZURE_STORAGE_ACCOUNT_KEY')
         self.connection_string = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
-        self.container_name = os.getenv('AZURE_STORAGE_CONTAINER_NAME', 'vehicle-insuarance')
+        self.container_name = os.getenv('AZURE_STORAGE_CONTAINER_NAME', 'vehicle-insurance')
         
         # Initialize blob service client
         if self.connection_string:

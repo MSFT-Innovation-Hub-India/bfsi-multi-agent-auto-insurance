@@ -30,10 +30,17 @@ ENV/
 env.bak/
 venv.bak/
 
-# Environment variables
+# Environment variables - NEVER COMMIT THESE
 .env
 .env.local
 .env.*.local
+.env.production
+.env.development
+
+# Backup files
+*.bak
+*.backup
+*copy.py
 
 # IDE
 .vscode/

@@ -9,6 +9,7 @@ import json
 import re
 from datetime import datetime
 from dotenv import load_dotenv
+from pathlib import Path
 from azure.ai.projects import AIProjectClient
 from azure.identity import DefaultAzureCredential
 from azure.ai.projects.models import AzureAISearchTool, Tool
@@ -59,32 +60,26 @@ except TypeError:
         index_name=INDEX_NAME
     )
 
-# Step 5: Define the Agent with updated instructions
+# Step 5: Load instructions from external file
+instructions_path = Path(__file__).parent.parent / "instructions" / "policy_agent.txt"
+with open(instructions_path, "r") as f:
+    instructions = f.read()
+
+# Step 6: Define the Agent with instructions from file
 search_agent = project_client.agents.create_agent(
     model="gpt-4o",
     name="main-auto-insurance-policy-expert",
-    instructions=(
-        "You are an AUTO INSURANCE POLICY EXPERT providing authoritative vehicle insurance guidance. "
-        "The index contains auto insurance policies, coverage details, and regulatory information. "
-        "\n\nYour role:"
-        "\n• Interpret auto insurance policies and coverage (liability, collision, comprehensive, PIP)"
-        "\n• Determine coverage eligibility and limits for vehicle claims"
-        "\n• Explain exclusions, deductibles, and policy limitations"
-        "\n• Guide claims processing and repair authorization"
-        "\n• Ensure state regulatory compliance"
-        "\n• Calculate vehicle valuations and settlements"
-        "\n\nAlways cite specific policy sections and provide clear, concise answers based on indexed documents."
-    ),
+    instructions=instructions,
     tools=ai_search.definitions,
     tool_resources=ai_search.resources,
 )
 
-# Step 6: Create a thread and get summary
+# Step 7: Create a thread and get summary
 thread = project_client.agents.create_thread()
 
 print("\n💬 Generating Main Auto Insurance Policy Expert Analysis...")
 
-# Step 7: Create message for complete analysis
+# Step 8: Create message for complete analysis
 policy_expert_query = (
     "Provide a comprehensive auto insurance policy analysis including: "
     "1) Coverage types and limits (liability, collision, comprehensive) with specific amounts "

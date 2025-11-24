@@ -1,5 +1,6 @@
 # Step 1: Load packages
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 from azure.ai.projects import AIProjectClient
 from azure.identity import DefaultAzureCredential
@@ -50,32 +51,21 @@ except TypeError:
         index_name=INDEX_NAME
     )
 
-# Step 5: Define the Agent with updated instructions
+# Step 5: Load instructions from external file
+instructions_path = Path(__file__).parent.parent / "instructions" / "inspection_agent.txt"
+with open(instructions_path, "r") as f:
+    instructions = f.read()
+
+# Step 6: Define the Agent with instructions from file
 search_agent = project_client.agents.create_agent(
     model="gpt-4o",
     name="auto-insurance-inspection-agent",
-    instructions=(
-        "You are an AUTO INSURANCE INSPECTION AGENT working for an insurance company to assess vehicle claims and conditions. "
-        "The index contains comprehensive information for ONE SPECIFIC VEHICLE including multiple images, inspection reports, "
-        "accident details, damage assessments, repair estimates, and related insurance documentation. "
-        "Your role as an insurance inspection agent is to: "
-        "1. Conduct thorough vehicle damage assessment for insurance claim validation "
-        "2. Compare different images of the same vehicle to verify claim authenticity and track damage progression "
-        "3. Analyze accident circumstances and determine if damage is consistent with reported incident "
-        "4. Assess repair costs, safety concerns, and determine if vehicle is repairable or total loss "
-        "5. Identify any inconsistencies, potential fraud indicators, or pre-existing damage "
-        "6. Generate detailed insurance inspection reports with recommendations for claim approval/denial "
-        "7. Evaluate vehicle's pre-accident value versus post-accident condition for settlement purposes "
-        "As an insurance professional, focus on accuracy, fraud detection, cost assessment, and regulatory compliance. "
-        "Always use only the indexed data for your analysis. Be thorough, objective, and cite specific "
-        "evidence from images and documents to support your insurance recommendations. Provide clear, "
-        "actionable conclusions for claim processing and settlement decisions."
-    ),
+    instructions=instructions,
     tools=ai_search.definitions,
     tool_resources=ai_search.resources,
 )
 
-# Step 6: Create a thread
+# Step 7: Create a thread
 thread = project_client.agents.create_thread()
 
 print("\n💬 You can now ask questions about the indexed customer documents (type 'exit' to stop).")

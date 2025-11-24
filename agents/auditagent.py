@@ -15,11 +15,11 @@ class AuditAgent:
     """Insurance Audit Agent for logging and tracking claim processing activities"""
     
     def __init__(self):
-        # Azure AI Project config
-        self.ENDPOINT = "https://eastus2.api.azureml.ms"
-        self.RESOURCE_GROUP = "rg-kushikote-9315_ai"
-        self.SUBSCRIPTION_ID = "055cefeb-8cfd-4996-b2d5-ee32fa7cf4d4"
-        self.PROJECT_NAME = "docstorage"
+        # Azure AI Project config from environment variables
+        self.ENDPOINT = os.getenv("AZURE_ENDPOINT")
+        self.RESOURCE_GROUP = os.getenv("AZURE_RESOURCE_GROUP")
+        self.SUBSCRIPTION_ID = os.getenv("AZURE_SUBSCRIPTION_ID")
+        self.PROJECT_NAME = os.getenv("AZURE_PROJECT_NAME")
         
         # Initialize project client
         self.project_client = AIProjectClient(
@@ -30,8 +30,8 @@ class AuditAgent:
             credential=DefaultAzureCredential()
         )
         
-        # Audit API base URL
-        self.audit_api_base = "https://cosmosaudit.azurewebsites.net"
+        # Audit API base URL from environment variable
+        self.audit_api_base = os.getenv("AUDIT_API_BASE_URL", "https://cosmosaudit.azurewebsites.net")
         
         # Agent configuration
         self.agent_name = "insurance-audit-agent"

@@ -14,11 +14,11 @@ class BaseInsuranceAgent:
     """Base class for all insurance agents with common functionality"""
     
     def __init__(self, index_name: str, agent_name: str, instructions: str):
-        # Azure AI Project config
-        self.ENDPOINT = "https://eastus2.api.azureml.ms"
-        self.RESOURCE_GROUP = "rg-kushikote-9315_ai"
-        self.SUBSCRIPTION_ID = "055cefeb-8cfd-4996-b2d5-ee32fa7cf4d4"
-        self.PROJECT_NAME = "docstorage"
+        # Azure AI Project config from environment variables
+        self.ENDPOINT = os.getenv("AZURE_ENDPOINT")
+        self.RESOURCE_GROUP = os.getenv("AZURE_RESOURCE_GROUP")
+        self.SUBSCRIPTION_ID = os.getenv("AZURE_SUBSCRIPTION_ID")
+        self.PROJECT_NAME = os.getenv("AZURE_PROJECT_NAME")
         self.INDEX_NAME = index_name
         
         # Initialize project client

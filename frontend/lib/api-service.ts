@@ -1,7 +1,7 @@
 // Batch API service for non-streaming requests
 // Connects to api_server.py (batch mode)
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001';
 
 export interface AgentResponse {
   agent_name: string;

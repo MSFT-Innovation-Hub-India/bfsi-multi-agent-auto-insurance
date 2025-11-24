@@ -182,11 +182,11 @@ class AutoInsuranceOrchestrator:
     """
     
     def __init__(self):
-        # Azure AI Project configuration
-        self.ENDPOINT = "https://eastus2.api.azureml.ms"
-        self.RESOURCE_GROUP = "rg-kushikote-9315_ai"
-        self.SUBSCRIPTION_ID = "055cefeb-8cfd-4996-b2d5-ee32fa7cf4d4"
-        self.PROJECT_NAME = "docstorage"
+        # Azure AI Project configuration from environment variables
+        self.ENDPOINT = os.getenv("AZURE_ENDPOINT")
+        self.RESOURCE_GROUP = os.getenv("AZURE_RESOURCE_GROUP")
+        self.SUBSCRIPTION_ID = os.getenv("AZURE_SUBSCRIPTION_ID")
+        self.PROJECT_NAME = os.getenv("AZURE_PROJECT_NAME")
         
         # Initialize Azure AI Project client
         self.project_client = AIProjectClient(
