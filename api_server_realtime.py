@@ -632,6 +632,7 @@ async def get_claim_agent_outputs(claim_id: str):
                 "claim_id": claim_id,
                 "agent_name": response.get("agent_type", ""),
                 "response": response.get("response_data", ""),
+                "extracted_data": response.get("extracted_data", {}),
                 "timestamp": response.get("timestamp", ""),
                 "status": response.get("status", "completed")
             })

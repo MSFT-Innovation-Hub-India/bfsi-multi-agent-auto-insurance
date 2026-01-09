@@ -6,20 +6,25 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001';
 export interface AgentOutput {
   id?: string;
   claim_id: string;
-  agent_name: string;
-  response: string;
+  agent_name?: string;
+  agent_type?: string;
+  response?: string;
+  response_data?: string;
+  extracted_data?: Record<string, unknown>;
   processing_time_seconds?: number;
   timestamp?: string;
   status?: 'completed' | 'failed' | 'pending';
   step?: number;
 }
 
+export type AgentOutputMap = Record<string, AgentOutput>;
+
 /**
  * Fetch all agent outputs for a specific claim ID from Cosmos DB
  * @param claimId - The claim ID to fetch outputs for
  * @returns Array of agent outputs
  */
-export async function getAgentOutputsByClaimId(claimId: string): Promise<AgentOutput[]> {
+export async function getAgentOutputsByClaimId(claimId: string): Promise<AgentOutputMap> {
   try {
     const response = await fetch(`${API_BASE_URL}/api/claims/${claimId}/outputs`);
     
@@ -29,11 +34,11 @@ export async function getAgentOutputsByClaimId(claimId: string): Promise<AgentOu
     }
     
     const data = await response.json();
-    return data.outputs || [];
+    return normalizeOutputs(data.outputs || []);
   } catch (error) {
     console.warn('Error fetching agent outputs, using mock data:', error);
     // Return mock data for development
-    return getMockAgentOutputs(claimId);
+    return normalizeOutputs(getMockAgentOutputs(claimId));
   }
 }
 
@@ -46,11 +51,30 @@ export async function getAgentOutputsByClaimId(claimId: string): Promise<AgentOu
 export async function getAgentOutput(claimId: string, agentName: string): Promise<AgentOutput | null> {
   try {
     const outputs = await getAgentOutputsByClaimId(claimId);
-    return outputs.find(output => output.agent_name === agentName) || null;
+    return outputs[agentName] || null;
   } catch (error) {
     console.error('Error fetching agent output:', error);
     return null;
   }
+}
+
+/**
+ * Normalize array payloads into a lookup keyed by agent type/name.
+ */
+function normalizeOutputs(outputs: AgentOutput[]): AgentOutputMap {
+  const map: AgentOutputMap = {};
+
+  outputs.forEach((o) => {
+    const key = (o.agent_name || o.agent_type || '').trim();
+    if (!key) return;
+    map[key] = {
+      ...o,
+      // Prefer response_data when present; fallback to response
+      response_data: o.response_data ?? o.response,
+    };
+  });
+
+  return map;
 }
 
 /**
@@ -60,8 +84,8 @@ function getMockAgentOutputs(claimId: string): AgentOutput[] {
   return [
     {
       claim_id: claimId,
-      agent_name: 'Policy Insight Agent',
-      response: JSON.stringify({
+      agent_name: 'policy',
+      response_data: JSON.stringify({
         policy_active: true,
         coverage_type: 'Comprehensive',
         policy_holder: 'John Doe',
@@ -75,8 +99,10 @@ function getMockAgentOutputs(claimId: string): AgentOutput[] {
         coverage_limits: {
           own_damage: 500000,
           third_party: 'Unlimited'
-        }
+        },
+        deductible: 2000
       }),
+      extracted_data: { deductible: 2000, coverage_eligible: true },
       processing_time_seconds: 2.5,
       timestamp: new Date().toISOString(),
       status: 'completed',
@@ -84,24 +110,8 @@ function getMockAgentOutputs(claimId: string): AgentOutput[] {
     },
     {
       claim_id: claimId,
-      agent_name: 'Coverage Assessment Agent',
-      response: JSON.stringify({
-        is_covered: true,
-        coverage_percentage: 100,
-        deductible: 2000,
-        assessment: 'Claim is fully covered under comprehensive insurance policy',
-        covered_damages: ['Body damage', 'Paint work', 'Bumper replacement'],
-        exclusions: []
-      }),
-      processing_time_seconds: 3.2,
-      timestamp: new Date().toISOString(),
-      status: 'completed',
-      step: 2
-    },
-    {
-      claim_id: claimId,
-      agent_name: 'Inspection Agent',
-      response: JSON.stringify({
+      agent_name: 'inspection',
+      response_data: JSON.stringify({
         damage_severity: 'Moderate',
         affected_parts: ['Front bumper', 'Hood', 'Left fender', 'Headlight'],
         estimated_repair_cost: 45000,
@@ -110,6 +120,7 @@ function getMockAgentOutputs(claimId: string): AgentOutput[] {
         recommendations: 'Approve claim for repair work at authorized service center',
         red_flags: []
       }),
+      extracted_data: { repair_cost_estimate: 45000, damage_authentic: true },
       processing_time_seconds: 5.8,
       timestamp: new Date().toISOString(),
       status: 'completed',
@@ -117,8 +128,8 @@ function getMockAgentOutputs(claimId: string): AgentOutput[] {
     },
     {
       claim_id: claimId,
-      agent_name: 'Bill Analysis Agent',
-      response: JSON.stringify({
+      agent_name: 'bill_synthesis',
+      response_data: JSON.stringify({
         total_amount: 60000,
         approved_amount: 58000,
         items: [
@@ -132,6 +143,7 @@ function getMockAgentOutputs(claimId: string): AgentOutput[] {
         discrepancies: ['Additional accessories not covered under claim'],
         verification_status: 'Verified'
       }),
+      extracted_data: { reimbursement_amount: 58000, actual_bill_amount: 60000 },
       processing_time_seconds: 4.1,
       timestamp: new Date().toISOString(),
       status: 'completed',
@@ -139,8 +151,8 @@ function getMockAgentOutputs(claimId: string): AgentOutput[] {
     },
     {
       claim_id: claimId,
-      agent_name: 'Final Decision Agent',
-      response: JSON.stringify({
+      agent_name: 'final_synthesis',
+      response_data: JSON.stringify({
         decision: 'APPROVED',
         approved_amount: 58000,
         confidence: 0.95,
@@ -148,6 +160,7 @@ function getMockAgentOutputs(claimId: string): AgentOutput[] {
         conditions: ['Repairs must be done at authorized service center', 'Submit final repair invoice within 30 days'],
         next_steps: ['Send approval notification to claimant', 'Process payment to service center', 'Schedule quality check post-repair']
       }),
+      extracted_data: { confidence_level: 95, risk_score: 'LOW' },
       processing_time_seconds: 3.5,
       timestamp: new Date().toISOString(),
       status: 'completed',

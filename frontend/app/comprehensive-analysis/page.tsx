@@ -24,7 +24,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { getAgentOutputsByClaimId, AgentOutput } from '@/lib/backend-db';
+import { getAgentOutputsByClaimId, AgentOutput, AgentOutputMap } from '@/lib/backend-db';
 
 interface AnalysisData {
   claimInfo: {
@@ -66,7 +66,7 @@ interface AnalysisData {
 
 // Parse agent outputs from Cosmos DB into structured analysis data
 function parseAgentOutputs(
-  agentOutputs: Record<string, AgentOutput>,
+  agentOutputs: AgentOutputMap,
   claimId: string | null,
   claimantName: string | null
 ): AnalysisData {
@@ -75,6 +75,22 @@ function parseAgentOutputs(
   const inspectionOutput = agentOutputs.inspection;
   const billOutput = agentOutputs.bill_synthesis;
   const finalOutput = agentOutputs.final_synthesis;
+
+  const getText = (output?: AgentOutput) => output?.response_data || output?.response || '';
+
+  const parseJsonSafe = (text: string): Record<string, any> | null => {
+    const trimmed = text.trim();
+    if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return null;
+    try {
+      return JSON.parse(trimmed);
+    } catch (e) {
+      return null;
+    }
+  };
+
+  const policyJson = parseJsonSafe(getText(policyOutput)) || {};
+  const billJson = parseJsonSafe(getText(billOutput)) || {};
+  const finalJson = parseJsonSafe(getText(finalOutput)) || {};
 
   // Extract key findings from each agent response
   const extractFindings = (responseText: string, maxFindings: number = 6): string[] => {
@@ -95,19 +111,142 @@ function parseAgentOutputs(
     return match ? parseInt(match[1].replace(/,/g, '')) : fallback;
   };
 
+  const maxCurrencyAmount = (texts: string[], fallback: number): number => {
+    let max = fallback;
+    const regex = /₹\s*([\d,]+)/g;
+    texts.forEach((t) => {
+      let m: RegExpExecArray | null;
+      while ((m = regex.exec(t)) !== null) {
+        const n = parseInt(m[1].replace(/,/g, ''), 10);
+        if (!Number.isNaN(n) && n > max) {
+          max = n;
+        }
+      }
+    });
+    return max;
+  };
+
+  const amountNearKeywords = (texts: string[], keywords: string[]): number | undefined => {
+    let best: number | undefined;
+    const numberRegex = /₹?\s*([\d][\d,]*)/g;
+
+    texts.forEach((t) => {
+      const lower = t.toLowerCase();
+      const hasKeyword = keywords.some((k) => lower.includes(k));
+      if (!hasKeyword) return;
+
+      let m: RegExpExecArray | null;
+      while ((m = numberRegex.exec(t)) !== null) {
+        const n = parseInt(m[1].replace(/,/g, ''), 10);
+        if (!Number.isNaN(n) && (best === undefined || n > best)) {
+          best = n;
+        }
+      }
+    });
+
+    return best;
+  };
+
+  const firstDefined = (...values: Array<number | undefined>): number | undefined => {
+    for (const v of values) {
+      if (v !== undefined && !Number.isNaN(v)) return v;
+    }
+    return undefined;
+  };
+
+  const toAmount = (value: unknown, fallback: number): number => {
+    if (typeof value === 'number' && !Number.isNaN(value)) return value;
+    if (typeof value === 'string') {
+      const cleaned = value.replace(/[^\d]/g, '');
+      if (cleaned) {
+        const n = parseInt(cleaned, 10);
+        if (!Number.isNaN(n)) return n;
+      }
+    }
+    return fallback;
+  };
+
+  const positiveAmountOrUndefined = (value: unknown): number | undefined => {
+    const n = toAmount(value, NaN);
+    return typeof n === 'number' && n > 0 ? n : undefined;
+  };
+
+  const amountAfterLabel = (text: string, labels: string[]): number | undefined => {
+    const lower = text.toLowerCase();
+    for (const label of labels) {
+      const idx = lower.indexOf(label.toLowerCase());
+      if (idx >= 0) {
+        const slice = text.slice(idx, idx + 160); // grab nearby
+        const m = /₹?\s*([\d][\d,]*)/.exec(slice);
+        if (m) {
+          const n = parseInt(m[1].replace(/,/g, ''), 10);
+          if (!Number.isNaN(n) && n > 0) return n;
+        }
+      }
+    }
+    return undefined;
+  };
+
   const extractPercentage = (text: string, fallback: number): number => {
     const match = text.match(/(\d+)%/);
     return match ? parseInt(match[1]) : fallback;
   };
 
   // Parse final decision
-  const finalText = finalOutput?.response_data || '';
+  const finalText = getText(finalOutput);
   const isApproved = finalText.toLowerCase().includes('approve') && !finalText.toLowerCase().includes('not approve');
-  const reimbursementAmount = billOutput?.extracted_data?.reimbursement_amount || 
-                              extractAmount(finalText, 51000);
-  const deductible = policyOutput?.extracted_data?.deductible || 5000;
-  const confidence = finalOutput?.extracted_data?.confidence_level || 
-                    extractPercentage(finalText, 98);
+
+  const structuredReimbursement = firstDefined(
+    positiveAmountOrUndefined((finalOutput?.extracted_data as any)?.reimbursement_amount),
+    positiveAmountOrUndefined((finalOutput?.extracted_data as any)?.approved_amount),
+    positiveAmountOrUndefined(finalJson.approved_amount),
+    positiveAmountOrUndefined(finalJson.reimbursement_amount),
+    positiveAmountOrUndefined((billOutput?.extracted_data as any)?.reimbursement_amount),
+    positiveAmountOrUndefined(billJson.approved_amount),
+    positiveAmountOrUndefined(billJson.reimbursement_amount),
+  );
+
+  const labeledAmount = amountAfterLabel(finalText, [
+    'final reimbursement',
+    'total coverage amount',
+    'approved amount',
+    'reimbursement of',
+    'coverage amount',
+  ]);
+
+  const keywordAmount = amountNearKeywords(
+    [finalText, getText(billOutput)],
+    ['approved', 'reimbursement', 'payable', 'final']
+  );
+
+  const fallbackCurrency = maxCurrencyAmount(
+    [
+      finalText,
+      getText(billOutput),
+    ],
+    extractAmount(finalText, 51000)
+  );
+
+  const reimbursementAmountRaw = firstDefined(
+    structuredReimbursement,
+    labeledAmount,
+    keywordAmount,
+    fallbackCurrency
+  );
+
+  const reimbursementAmount = reimbursementAmountRaw && reimbursementAmountRaw > 0
+    ? reimbursementAmountRaw
+    : fallbackCurrency;
+
+  const deductible =
+    (policyOutput?.extracted_data as any)?.deductible ??
+    policyJson.deductible ??
+    5000;
+
+  const confidence =
+    (finalOutput?.extracted_data as any)?.confidence_level ??
+    finalJson.confidence ??
+    extractPercentage(finalText, 98);
 
   // Parse claim info
   const vehicleInfo = policyOutput?.extracted_data?.coverage_type || 'Vehicle';
@@ -122,7 +261,7 @@ function parseAgentOutputs(
       claimAmount: billOutput?.extracted_data?.actual_bill_amount || 56000,
       submittedDate: new Date(Date.now() - 172800000).toISOString().split('T')[0],
       processedDate: new Date().toISOString().split('T')[0],
-      processingTime: '~2 mins'
+      processingTime: '~4 mins'
     },
     finalDecision: {
       status: isApproved ? 'APPROVED' : 'PENDING',
@@ -137,46 +276,46 @@ function parseAgentOutputs(
         agentName: 'Policy Lookup Assistant',
         icon: FileText,
         status: 'completed',
-        summary: policyOutput?.response_data.split('\n')[0] || 'Policy analysis completed',
-        findings: extractFindings(policyOutput?.response_data || ''),
+        summary: getText(policyOutput).split('\n')[0] || 'Policy analysis completed',
+        findings: extractFindings(getText(policyOutput)),
         confidence: policyOutput?.extracted_data?.policy_compliance_score || 98,
-        rawResponse: policyOutput?.response_data || ''
+        rawResponse: getText(policyOutput)
       },
       {
         agentName: 'Policy Coverage Assistant',
         icon: Shield,
         status: 'completed',
         summary: 'Coverage eligibility validated and policy terms verified',
-        findings: extractFindings(policyOutput?.response_data || '').slice(0, 6),
+        findings: extractFindings(getText(policyOutput)).slice(0, 6),
         confidence: policyOutput?.extracted_data?.coverage_eligible ? 96 : 85,
-        rawResponse: policyOutput?.response_data || ''
+        rawResponse: getText(policyOutput)
       },
       {
         agentName: 'Claims Evidence Evaluator',
         icon: Search,
         status: 'completed',
-        summary: inspectionOutput?.response_data.split('\n')[0] || 'Vehicle inspection completed',
-        findings: extractFindings(inspectionOutput?.response_data || ''),
+        summary: getText(inspectionOutput).split('\n')[0] || 'Vehicle inspection completed',
+        findings: extractFindings(getText(inspectionOutput)),
         confidence: inspectionOutput?.extracted_data?.damage_authenticity_score || 92,
-        rawResponse: inspectionOutput?.response_data || ''
+        rawResponse: getText(inspectionOutput)
       },
       {
         agentName: 'Settlement Underwriter',
         icon: AlertCircle,
         status: 'completed',
-        summary: billOutput?.response_data.split('\n')[0] || 'Bill validation completed',
-        findings: extractFindings(billOutput?.response_data || ''),
+        summary: getText(billOutput).split('\n')[0] || 'Bill validation completed',
+        findings: extractFindings(getText(billOutput)),
         confidence: billOutput?.extracted_data?.cost_reasonableness_score || 95,
-        rawResponse: billOutput?.response_data || ''
+        rawResponse: getText(billOutput)
       },
       {
         agentName: 'Decision Advisor',
         icon: IndianRupee,
         status: 'completed',
-        summary: finalOutput?.response_data.split('\n\n')[0] || 'Final synthesis completed',
-        findings: extractFindings(finalOutput?.response_data || ''),
+        summary: getText(finalOutput).split('\n\n')[0] || 'Final synthesis completed',
+        findings: extractFindings(getText(finalOutput)),
         confidence: confidence,
-        rawResponse: finalOutput?.response_data || ''
+        rawResponse: getText(finalOutput)
       }
     ],
     riskAssessment: {
@@ -328,436 +467,264 @@ export default function ComprehensiveAnalysisPage() {
   };
 
   return (
-    <div className="min-h-screen bg-blue-50">
-      <div className="max-w-7xl mx-auto p-8 space-y-6">
-        {/* Header */}
-        <div className="bg-white shadow-sm border border-blue-100 p-6 rounded-2xl">
-          <div className="flex items-center justify-between flex-wrap gap-4">
-            <div className="flex items-center space-x-4">
-              <Button
-                onClick={() => router.back()}
-                variant="outline"
-                className="flex items-center space-x-2 border-blue-200 hover:bg-blue-50 text-blue-700 rounded-lg transition-all"
-              >
-                <ArrowLeft className="h-4 w-4" />
-                <span>Back</span>
-              </Button>
-              <div className="h-10 w-px bg-blue-200 hidden md:block"></div>
+    <div className="min-h-screen bg-slate-100">
+      {/* Header */}
+      <div className="bg-blue-600 text-white px-6 py-4 shadow-md">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-5">
+            <Button
+              onClick={() => router.back()}
+              variant="ghost"
+              className="text-white hover:bg-blue-700 px-3"
+            >
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back
+            </Button>
+            <div className="h-6 w-px bg-blue-400"></div>
+            <div>
+              <h1 className="text-xl font-bold">Comprehensive Claim Analysis</h1>
+              <p className="text-sm text-blue-100 mt-0.5">
+                {data.claimInfo.id} • {data.claimInfo.claimantName}
+              </p>
+            </div>
+          </div>
+          {getDecisionBadge()}
+        </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto px-6 py-5 space-y-4">
+        {/* Key Metrics */}
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-blue-100 rounded-xl">
+                <IndianRupee className="h-5 w-5 text-blue-600" />
+              </div>
               <div>
-                <h1 className="text-3xl font-bold text-blue-900">
-                  Comprehensive Claim Analysis
-                </h1>
-                <p className="text-sm text-slate-600 mt-1">
-                  Claim ID: <span className="font-semibold text-blue-700">{data.claimInfo.id}</span> • Claimant: <span className="font-semibold text-blue-700">{data.claimInfo.claimantName}</span>
-                </p>
+                <p className="text-xs text-slate-500 uppercase font-medium">Approved Amount</p>
+                <p className="text-2xl font-bold text-blue-900">₹{data.finalDecision.approvedAmount.toLocaleString('en-IN')}</p>
               </div>
             </div>
-            <Button className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white shadow-md rounded-lg transition-all">
-              <Download className="h-4 w-4" />
-              <span>Export Report</span>
-            </Button>
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-emerald-100 rounded-xl">
+                <CheckCircle className="h-5 w-5 text-emerald-600" />
+              </div>
+              <div>
+                <p className="text-xs text-slate-500 uppercase font-medium">AI Confidence</p>
+                <p className="text-2xl font-bold text-emerald-600">{data.finalDecision.confidence}%</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-amber-100 rounded-xl">
+                <AlertTriangle className="h-5 w-5 text-amber-600" />
+              </div>
+              <div>
+                <p className="text-xs text-slate-500 uppercase font-medium">Risk Level</p>
+                <p className="text-2xl font-bold text-slate-900">{data.finalDecision.riskScore}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-purple-100 rounded-xl">
+                <Clock className="h-5 w-5 text-purple-600" />
+              </div>
+              <div>
+                <p className="text-xs text-slate-500 uppercase font-medium">Processing Time</p>
+                <p className="text-2xl font-bold text-slate-900">{data.claimInfo.processingTime}</p>
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* AI Decision Summary - Full Width */}
-        <Card className="border border-blue-100 shadow-lg bg-white rounded-2xl overflow-hidden">
-          <CardHeader className="bg-blue-600 text-white pb-5 pt-5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-3">
-                <div className="p-3 bg-blue-700 rounded-xl">
-                  <Shield className="h-6 w-6 text-white" />
+        {/* Main Content */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {/* Left Column */}
+          <div className="lg:col-span-2 space-y-4">
+            {/* Claim Details */}
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+              <div className="flex items-center gap-2 mb-4">
+                <FileText className="h-5 w-5 text-blue-600" />
+                <span className="text-base font-semibold text-slate-800">Claim Details</span>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                <div>
+                  <p className="text-xs text-slate-400 uppercase mb-1">Claimant</p>
+                  <p className="text-sm font-medium text-slate-700">{data.claimInfo.claimantName}</p>
                 </div>
                 <div>
-                  <CardTitle className="text-xl font-bold text-white">AI Decision Summary</CardTitle>
-                  <p className="text-white text-sm mt-1">Multi-agent verification complete</p>
+                  <p className="text-xs text-slate-400 uppercase mb-1">Vehicle</p>
+                  <p className="text-sm font-medium text-slate-700">{data.claimInfo.vehicleType}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-400 uppercase mb-1">Registration</p>
+                  <p className="text-sm font-medium text-slate-700 font-mono">{data.claimInfo.registrationNumber}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-400 uppercase mb-1">Submitted</p>
+                  <p className="text-sm font-medium text-slate-700">{data.claimInfo.submittedDate}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-400 uppercase mb-1">Processed</p>
+                  <p className="text-sm font-medium text-slate-700">{data.claimInfo.processedDate}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-400 uppercase mb-1">Claim ID</p>
+                  <p className="text-sm font-medium text-blue-600">{data.claimInfo.id}</p>
                 </div>
               </div>
-              {getDecisionBadge()}
             </div>
-          </CardHeader>
-          <CardContent className="pt-6 pb-6 bg-white">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-              <div className="bg-white border border-blue-100 p-5 rounded-xl hover:shadow-md hover:border-blue-200 transition-all">
-                <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide mb-2">Approved Amount</p>
-                <p className="text-3xl font-bold text-blue-900">₹{data.finalDecision.approvedAmount.toLocaleString('en-IN')}</p>
-                <p className="text-xs text-slate-500 mt-2">After deductible: ₹{data.finalDecision.deductible.toLocaleString('en-IN')}</p>
-              </div>
-              <div className="bg-white border border-blue-100 p-5 rounded-xl hover:shadow-md hover:border-blue-200 transition-all">
-                <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide mb-2">AI Confidence</p>
-                <p className="text-3xl font-bold text-emerald-600">{data.finalDecision.confidence}%</p>
-                <div className="mt-3">
-                  <Progress value={data.finalDecision.confidence} className="h-2.5 bg-blue-100" />
-                </div>
-              </div>
-              <div className="bg-white border border-blue-100 p-5 rounded-xl hover:shadow-md hover:border-blue-200 transition-all">
-                <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide mb-2">Risk Assessment</p>
-                <p className="text-3xl font-bold text-blue-900">{data.finalDecision.riskScore}</p>
-                <p className="text-xs text-slate-500 mt-2">Fraud risk: {data.finalDecision.fraudProbability}%</p>
-              </div>
-              <div className="bg-white border border-blue-100 p-5 rounded-xl hover:shadow-md hover:border-blue-200 transition-all">
-                <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide mb-2">Processing Time</p>
-                <p className="text-3xl font-bold text-blue-900">{data.claimInfo.processingTime}</p>
-                <p className="text-xs text-emerald-600 mt-2 font-semibold">98% faster</p>
-              </div>
-            </div>
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-start space-x-4">
-              <div className="p-2 bg-blue-600 rounded-xl flex-shrink-0">
+
+            {/* AI Recommendation */}
+            <div className="bg-blue-50 rounded-xl border border-blue-200 p-4 flex items-center gap-4">
+              <div className="p-2 bg-blue-600 rounded-lg">
                 <TrendingUp className="h-5 w-5 text-white" />
               </div>
-              <div className="flex-1">
-                <p className="text-base font-semibold text-blue-900">
-                  High-Confidence Recommendation: APPROVE
-                </p>
-                <p className="text-sm text-slate-700 mt-1">
-                  All verification checks passed. System recommends approval with {data.finalDecision.confidence}% confidence. Ready for underwriter final review.
-                </p>
+              <div>
+                <p className="text-sm font-semibold text-blue-900">Recommendation: APPROVE</p>
+                <p className="text-sm text-slate-600">All verification checks passed with {data.finalDecision.confidence}% confidence.</p>
               </div>
             </div>
-          </CardContent>
-        </Card>
 
-        {/* Two Column Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Column - Main Content */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Claim Information */}
-            <Card className="border border-blue-100 shadow-sm bg-white rounded-2xl overflow-hidden">
-              <CardHeader className="pb-5 pt-5 bg-blue-600 border-b border-blue-200">
-                <div className="flex items-center space-x-3">
-                  <div className="p-2 bg-blue-700 rounded-xl">
-                    <FileText className="h-5 w-5 text-white" />
+            {/* Agent Analysis */}
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <Shield className="h-5 w-5 text-blue-600" />
+                  <span className="text-base font-semibold text-slate-800">AI Agent Analysis</span>
+                </div>
+                <Badge variant="outline">{data.agentAnalysis.length} agents</Badge>
+              </div>
+              <div className="space-y-3">
+                {data.agentAnalysis.map((agent, index) => {
+                  const IconComponent = agent.icon;
+                  const isExpanded = expandedAgents[index] || false;
+                  
+                  return (
+                    <div 
+                      key={index} 
+                      className="border border-slate-200 rounded-lg overflow-hidden"
+                    >
+                      <div 
+                        className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-slate-50 transition-colors"
+                        onClick={() => setExpandedAgents(prev => ({ ...prev, [index]: !prev[index] }))}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 bg-blue-600 rounded-lg">
+                            <IconComponent className="h-4 w-4 text-white" />
+                          </div>
+                          <span className="text-sm font-medium text-slate-800">{agent.agentName}</span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-sm text-slate-500">{agent.confidence}%</span>
+                          <Badge className="bg-emerald-500 text-white text-xs">✓</Badge>
+                          <svg className={`w-5 h-5 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </div>
+                      </div>
+                      
+                      {isExpanded && (
+                        <div className="border-t border-slate-100 px-4 py-4 bg-slate-50 space-y-3">
+                          <p className="text-sm text-slate-600 leading-relaxed">{agent.summary}</p>
+                          {agent.findings.length > 0 && (
+                            <div className="space-y-2">
+                              {agent.findings.slice(0, 4).map((finding, fIndex) => (
+                                <div key={fIndex} className="flex items-start gap-2 text-sm text-slate-600">
+                                  <span className="text-blue-500 mt-1">•</span>
+                                  <span>{finding}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          <div className="flex items-center gap-3 pt-2">
+                            <Progress value={agent.confidence} className="h-2 flex-1 bg-slate-200" />
+                            <span className="text-xs font-medium text-slate-500">{agent.confidence}%</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Timeline */}
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-8">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+                    <span className="text-sm text-slate-600">Submitted: <span className="font-medium text-slate-800">{data.claimInfo.submittedDate}</span></span>
                   </div>
-                  <div>
-                    <CardTitle className="text-base font-bold text-white">Claim Information</CardTitle>
-                    <p className="text-white text-sm mt-1">Policy and claimant details</p>
+                  <div className="h-px w-12 bg-slate-300"></div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 bg-amber-500 rounded-full"></div>
+                    <span className="text-sm text-slate-600">Processing: <span className="font-medium text-slate-800">{data.claimInfo.processingTime}</span></span>
+                  </div>
+                  <div className="h-px w-12 bg-slate-300"></div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 bg-emerald-500 rounded-full"></div>
+                    <span className="text-sm text-slate-600">Completed: <span className="font-medium text-slate-800">{data.claimInfo.processedDate}</span></span>
                   </div>
                 </div>
-              </CardHeader>
-              <CardContent className="pt-6 pb-6">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div className="space-y-2">
-                    <p className="text-xs font-semibold text-blue-600 uppercase tracking-wider">Claimant Name</p>
-                    <p className="text-base font-medium text-slate-700">{data.claimInfo.claimantName}</p>
-                  </div>
-                  <div className="space-y-2">
-                    <p className="text-xs font-semibold text-blue-600 uppercase tracking-wider">Vehicle Type</p>
-                    <p className="text-base font-medium text-slate-700">{data.claimInfo.vehicleType}</p>
-                  </div>
-                  <div className="space-y-2">
-                    <p className="text-xs font-semibold text-blue-600 uppercase tracking-wider">Registration No.</p>
-                    <p className="text-base font-medium text-slate-700 font-mono">{data.claimInfo.registrationNumber}</p>
-                  </div>
-                  <div className="space-y-2">
-                    <p className="text-xs font-semibold text-blue-600 uppercase tracking-wider">Submitted</p>
-                    <p className="text-base font-medium text-slate-700">{data.claimInfo.submittedDate}</p>
-                  </div>
-                  <div className="space-y-2">
-                    <p className="text-xs font-semibold text-blue-600 uppercase tracking-wider">Processed</p>
-                    <p className="text-base font-medium text-slate-700">{data.claimInfo.processedDate}</p>
-                  </div>
-                  <div className="space-y-2">
-                    <p className="text-xs font-semibold text-blue-600 uppercase tracking-wider">Claim ID</p>
-                    <p className="text-base font-medium text-blue-700">{data.claimInfo.id}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                <Badge className="bg-emerald-100 text-emerald-700">98% faster</Badge>
+              </div>
+            </div>
           </div>
 
           {/* Right Column - Decision Panel */}
           <div className="lg:col-span-1">
             {!finalDecision ? (
-              <Card className="border border-blue-100 shadow-sm sticky top-6 bg-white rounded-2xl overflow-hidden">
-                <CardHeader className="bg-blue-600 text-white pb-5 pt-5">
-                  <div className="flex items-center space-x-3">
-                    <div className="p-2 bg-blue-700 rounded-xl">
-                      <Edit className="h-5 w-5 text-white" />
-                    </div>
-                    <div>
-                      <CardTitle className="text-base font-bold text-white">Underwriter Decision</CardTitle>
-                      <p className="text-white text-sm mt-1">Action Required</p>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="pt-6 pb-6 space-y-4">
-                  <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
-                    <p className="text-sm text-slate-700 leading-relaxed">
-                      Review the AI analysis and supporting documentation before making your final decision on this claim.
-                    </p>
-                  </div>
-
-                  <div className="space-y-3">
-                    <Button
-                      onClick={() => handleMakeDecision('APPROVED')}
-                      className="w-full bg-emerald-50 hover:bg-emerald-100 border border-emerald-100 hover:border-emerald-200 py-6 text-base font-semibold flex items-center justify-center space-x-2 shadow-sm hover:shadow-md transition-all rounded-xl"
-                    >
-                      <ThumbsUp className="h-5 w-5 text-emerald-700" />
-                      <span className="text-emerald-700">Approve Claim</span>
-                    </Button>
-                    
-                    <Button
-                      onClick={() => handleMakeDecision('REJECTED')}
-                      className="w-full bg-red-50 hover:bg-red-100 border border-red-100 hover:border-red-200 py-6 text-base font-semibold flex items-center justify-center space-x-2 shadow-sm hover:shadow-md transition-all rounded-xl"
-                    >
-                      <ThumbsDown className="h-5 w-5 text-red-700" />
-                      <span className="text-red-700">Reject Claim</span>
-                    </Button>
-                  </div>
-
-                  <div className="pt-4 border-t border-blue-100">
-                    <p className="text-xs text-slate-600 text-center leading-relaxed">
-                      Decision will be recorded with timestamp and user credentials
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            ) : (
-              <Card className="border border-emerald-100 shadow-sm sticky top-6 bg-white rounded-2xl overflow-hidden">
-                <CardHeader className="bg-emerald-600 text-white pb-5 pt-5">
-                  <div className="flex items-center space-x-3">
-                    <div className="p-2.5 bg-emerald-700 rounded-xl">
-                      <CheckCircle className="h-5 w-5 text-white" />
-                    </div>
-                    <div>
-                      <CardTitle className="text-base font-bold text-white">Decision Recorded</CardTitle>
-                      <p className="text-white text-sm mt-1">Claim Finalized</p>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="pt-6 pb-6 space-y-4">
-                  <div className="text-center py-6">
-                    <div className="inline-flex items-center justify-center w-20 h-20 bg-emerald-50 rounded-full mb-4">
-                      <CheckCircle className="h-12 w-12 text-emerald-600" />
-                    </div>
-                    <h3 className="text-2xl font-bold text-slate-900 mb-2">Claim {finalDecision}</h3>
-                    <p className="text-sm text-slate-600">
-                      Decision made on {new Date().toLocaleDateString('en-IN', { 
-                        day: 'numeric', 
-                        month: 'long', 
-                        year: 'numeric' 
-                      })}
-                    </p>
-                  </div>
-
-                  <div className="bg-emerald-50 p-4 border border-emerald-100 rounded-xl">
-                    <p className="text-sm font-semibold text-emerald-900 mb-2">Compliance Note</p>
-                    <p className="text-xs text-slate-700 leading-relaxed">
-                      Decision recorded and logged in compliance with regulatory requirements.
-                    </p>
-                  </div>
-
+              <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5 sticky top-5">
+                <div className="flex items-center gap-2 mb-4">
+                  <Edit className="h-5 w-5 text-blue-600" />
+                  <span className="text-base font-semibold text-slate-800">Underwriter Decision</span>
+                </div>
+                <p className="text-sm text-slate-500 mb-5 leading-relaxed">
+                  Review the AI analysis and make your final decision on this claim.
+                </p>
+                <div className="space-y-3">
                   <Button
-                    variant="outline"
-                    className="w-full border-blue-200 hover:bg-blue-50 text-blue-700 rounded-xl"
-                    onClick={() => setFinalDecision(null)}
+                    onClick={() => handleMakeDecision('APPROVED')}
+                    className="w-full bg-emerald-500 hover:bg-emerald-600 text-white py-6 text-base font-semibold rounded-xl"
                   >
-                    Revise Decision
+                    <ThumbsUp className="h-5 w-5 mr-2" />
+                    Approve Claim
                   </Button>
-                </CardContent>
-              </Card>
+                  <Button
+                    onClick={() => handleMakeDecision('REJECTED')}
+                    className="w-full bg-red-500 hover:bg-red-600 text-white py-6 text-base font-semibold rounded-xl"
+                  >
+                    <ThumbsDown className="h-5 w-5 mr-2" />
+                    Reject Claim
+                  </Button>
+                </div>
+                <p className="text-xs text-slate-400 text-center mt-5 pt-4 border-t border-slate-100">
+                  Decision will be logged with timestamp & credentials
+                </p>
+              </div>
+            ) : (
+              <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5 sticky top-5 text-center">
+                <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <CheckCircle className="h-10 w-10 text-emerald-600" />
+                </div>
+                <h3 className="text-xl font-bold text-slate-900 mb-2">Claim {finalDecision}</h3>
+                <p className="text-sm text-slate-500 mb-5">
+                  {new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}
+                </p>
+                <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4 mb-5">
+                  <p className="text-sm text-emerald-700">Decision recorded and logged in compliance with regulatory requirements.</p>
+                </div>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => setFinalDecision(null)}
+                >
+                  Revise Decision
+                </Button>
+              </div>
             )}
           </div>
         </div>
-
-        {/* Agent Analysis, Financial Summary, and Timeline - Side by Side */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Agent Analysis Details */}
-          <Card className="border border-blue-100 shadow-sm bg-white rounded-2xl overflow-hidden">
-            <CardHeader className="bg-blue-600 text-white pb-4 pt-4">
-              <CardTitle className="flex items-center space-x-2 text-white text-base font-bold">
-                <div className="p-2 bg-blue-700 rounded-xl">
-                  <TrendingUp className="h-5 w-5 text-white" />
-                </div>
-                <span>AI Agent Analysis</span>
-              </CardTitle>
-              <p className="text-white text-sm mt-1">
-                {data.agentAnalysis.length} agents analyzed
-              </p>
-            </CardHeader>
-            <CardContent className="pt-4 pb-4 bg-white">
-            <div className="space-y-3">
-              {data.agentAnalysis.map((agent, index) => {
-                const IconComponent = agent.icon;
-                const isExpanded = expandedAgents[index] || false;
-                
-                return (
-                  <Card 
-                    key={index} 
-                    className="border border-blue-100 hover:border-blue-200 hover:shadow-sm transition-all bg-white overflow-hidden rounded-xl"
-                  >
-                    <CardHeader 
-                      className="pb-3 pt-3 bg-blue-50 border-b border-blue-100 cursor-pointer hover:bg-blue-100 transition-colors"
-                      onClick={() => setExpandedAgents(prev => ({ ...prev, [index]: !prev[index] }))}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-3 flex-1">
-                          <div className="p-2 bg-blue-600 rounded-xl">
-                            <IconComponent className="h-4 w-4 text-white" />
-                          </div>
-                          <div className="flex-1">
-                            <CardTitle className="text-sm font-bold text-slate-900">{agent.agentName}</CardTitle>
-                            <p className="text-xs text-blue-600 mt-0.5 font-medium">
-                              {agent.confidence}% confidence • {agent.status.toUpperCase()}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <Badge className="bg-emerald-600 text-white text-xs rounded-lg px-2 py-1">
-                            ✓
-                          </Badge>
-                          <button className="p-1 hover:bg-blue-200 rounded-lg transition-colors">
-                            {isExpanded ? (
-                              <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                              </svg>
-                            ) : (
-                              <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                              </svg>
-                            )}
-                          </button>
-                        </div>
-                      </div>
-                    </CardHeader>
-                    
-                    {isExpanded && (
-                      <CardContent className="space-y-3 pt-3 pb-3 bg-white">
-                        <div className="bg-blue-50 p-3 border border-blue-100 rounded-xl">
-                          <p className="text-xs font-bold text-blue-700 uppercase tracking-wide mb-1.5">
-                            Summary
-                          </p>
-                          <p className="text-sm text-slate-900 leading-relaxed">
-                            {agent.summary}
-                          </p>
-                        </div>
-                        
-                        {agent.findings.length > 0 && (
-                          <div>
-                            <p className="text-xs font-bold text-blue-700 mb-2 uppercase tracking-wide">
-                              Key Findings ({agent.findings.length})
-                            </p>
-                            <div className="space-y-2">
-                              {agent.findings.map((finding, fIndex) => (
-                                <div 
-                                  key={fIndex} 
-                                  className="bg-white border border-blue-100 rounded-xl p-3 flex items-start space-x-2 hover:border-blue-200 hover:shadow-sm transition-all"
-                                >
-                                  <div className="mt-1 p-1 bg-blue-600 rounded-full">
-                                    <div className="w-1.5 h-1.5 bg-white rounded-full"></div>
-                                  </div>
-                                  <p className="text-sm text-slate-900 leading-relaxed flex-1">{finding}</p>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        <div className="pt-3 border-t border-blue-100">
-                          <div className="flex items-center justify-between text-sm mb-2">
-                            <span className="text-blue-600 font-semibold">Confidence Level</span>
-                            <span className="font-bold text-blue-900">{agent.confidence}%</span>
-                          </div>
-                          <Progress value={agent.confidence} className="h-2 bg-blue-100" />
-                        </div>
-                      </CardContent>
-                    )}
-                  </Card>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Financial Summary */}
-        <Card className="border border-blue-100 shadow-sm bg-white rounded-2xl overflow-hidden">
-          <CardHeader className="bg-blue-600 border-b border-blue-200 pb-4 pt-4">
-            <CardTitle className="flex items-center space-x-2 text-white text-base font-bold">
-              <div className="p-2 bg-blue-700 rounded-xl">
-                <IndianRupee className="h-5 w-5 text-white" />
-              </div>
-              <span>Financial Summary</span>
-            </CardTitle>
-            <CardDescription className="text-white text-sm">Claim breakdown</CardDescription>
-          </CardHeader>
-          <CardContent className="pt-4 pb-4 bg-white">
-            <div className="space-y-3">
-              <div className="flex items-center justify-between p-4 bg-blue-50 rounded-xl border border-blue-100">
-                <div>
-                  <p className="text-sm text-blue-700 font-bold uppercase tracking-wider">Claimed</p>
-                  <p className="text-xs text-slate-600 mt-0.5">Submitted amount</p>
-                </div>
-                <p className="text-2xl font-bold text-slate-900">
-                  ₹{data.claimInfo.claimAmount.toLocaleString('en-IN')}
-                </p>
-              </div>
-
-              <div className="flex items-center justify-between p-4 bg-blue-50 rounded-xl border border-blue-100">
-                <div>
-                  <p className="text-sm text-blue-700 font-bold uppercase tracking-wider">Deductible</p>
-                  <p className="text-xs text-slate-600 mt-0.5">Policy amount</p>
-                </div>
-                <p className="text-2xl font-bold text-slate-900">
-                  -₹{data.finalDecision.deductible.toLocaleString('en-IN')}
-                </p>
-              </div>
-
-              <div className="flex items-center justify-between p-4 bg-emerald-50 rounded-xl border border-emerald-100">
-                <div>
-                  <p className="text-sm text-emerald-700 font-bold uppercase tracking-wider">Approved</p>
-                  <p className="text-xs text-slate-600 mt-0.5">AI recommended</p>
-                </div>
-                <p className="text-2xl font-bold text-slate-900">
-                  ₹{data.finalDecision.approvedAmount.toLocaleString('en-IN')}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Processing Timeline */}
-        <Card className="border border-blue-100 shadow-sm bg-white rounded-2xl overflow-hidden">
-          <CardHeader className="bg-blue-600 border-b border-blue-200 pb-4 pt-4">
-            <CardTitle className="flex items-center space-x-2 text-white text-base font-bold">
-              <div className="p-2 bg-blue-700 rounded-xl">
-                <Clock className="h-5 w-5 text-white" />
-              </div>
-              <span>Processing Timeline</span>
-            </CardTitle>
-            <CardDescription className="text-white text-sm">Processing efficiency</CardDescription>
-          </CardHeader>
-          <CardContent className="pt-4 pb-4 bg-white">
-            <div className="space-y-3">
-              <div className="text-center p-4 bg-blue-50 rounded-xl border border-blue-100">
-                <p className="text-xs text-blue-700 font-bold mb-2 uppercase tracking-wider">Submitted</p>
-                <p className="text-base font-bold text-slate-900">{data.claimInfo.submittedDate}</p>
-              </div>
-              <div className="text-center p-4 bg-blue-50 rounded-xl border border-blue-100">
-                <p className="text-xs text-blue-700 font-bold mb-2 uppercase tracking-wider">Processing Time</p>
-                <p className="text-base font-bold text-slate-900">{data.claimInfo.processingTime}</p>
-              </div>
-              <div className="text-center p-4 bg-emerald-50 rounded-xl border border-emerald-100">
-                <p className="text-xs text-emerald-700 font-bold mb-2 uppercase tracking-wider">Completed</p>
-                <p className="text-base font-bold text-slate-900">{data.claimInfo.processedDate}</p>
-              </div>
-            </div>
-            <div className="mt-4 p-4 bg-blue-600 rounded-xl shadow-sm">
-              <div className="flex items-center space-x-3">
-                <div className="p-2 bg-blue-700 rounded-xl">
-                  <TrendingUp className="h-5 w-5 text-white" />
-                </div>
-                <div>
-                  <p className="text-sm font-bold text-white">
-                    98% faster than traditional
-                  </p>
-                  <p className="text-xs text-white mt-0.5">
-                    From 48 hours to ~2 minutes
-                  </p>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
       </div>
     </div>
   );
