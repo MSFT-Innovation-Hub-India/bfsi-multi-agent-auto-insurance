@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from typing import Dict, Any, Optional
 import asyncio
 import json
+import os
 from datetime import datetime
 import uvicorn
 
@@ -18,9 +19,15 @@ from orchestrator import AutoInsuranceOrchestrator, ClaimData
 app = FastAPI(title="Auto Insurance Claim API", version="1.0.0")
 
 # Add CORS middleware to allow frontend connections
+# Read allowed origins from environment variable (comma-separated)
+allowed_origins = os.getenv(
+    "CORS_ORIGINS",
+    "http://localhost:3000,http://127.0.0.1:3000"
+).split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],  # Next.js default ports
+    allow_origins=[origin.strip() for origin in allowed_origins],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -326,10 +333,11 @@ async def root():
 
 if __name__ == "__main__":
     print("🚀 Starting Auto Insurance Claim API Server...")
+    port = int(os.getenv("PORT", 8000))  # Azure App Service sets PORT env var
     uvicorn.run(
         "api_server:app",
         host="0.0.0.0",
-        port=8000,
-        reload=True,
+        port=port,
+        reload=False,  # Disable reload in production
         log_level="info"
     )

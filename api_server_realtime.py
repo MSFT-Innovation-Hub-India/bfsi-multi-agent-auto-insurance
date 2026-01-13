@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from typing import Dict, Any, Optional, AsyncGenerator
 import asyncio
 import json
+import os
 from datetime import datetime
 import uvicorn
 
@@ -32,9 +33,15 @@ AGENT_NAMES = {
 app = FastAPI(title="Auto Insurance Claim API - Real-Time", version="2.0.0")
 
 # Add CORS middleware to allow frontend connections
+# Read allowed origins from environment variable (comma-separated)
+allowed_origins = os.getenv(
+    "CORS_ORIGINS",
+    "http://localhost:3000,http://127.0.0.1:3000"
+).split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=[origin.strip() for origin in allowed_origins],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -665,10 +672,11 @@ async def root():
 if __name__ == "__main__":
     print("🚀 Starting Real-Time Auto Insurance Claim API Server...")
     print("📡 Using Server-Sent Events (SSE) for live streaming")
+    port = int(os.getenv("PORT", 8001))  # Azure App Service sets PORT env var
     uvicorn.run(
         "api_server_realtime:app",
         host="0.0.0.0",
-        port=8001,  # Different port to avoid conflict
-        reload=True,
+        port=port,
+        reload=False,  # Disable reload in production
         log_level="info"
     )

@@ -1,5 +1,24 @@
+# Web Framework & API
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
+gunicorn==21.2.0
 pydantic==2.5.0
+
+# Configuration & Utilities
 python-dotenv==1.0.0
+requests==2.31.0
+jsonref==1.1.0
+Pillow==10.1.0
+
+# Azure Core Services
+azure-core==1.29.5
+azure-identity==1.25.0
+
+# Azure AI Services
+azure-ai-projects==1.0.0b1
+semantic-kernel==1.29.0
+
+# Azure Storage & Data
 azure-storage-blob==12.19.0
+azure-cosmos==4.14.2
+azure-search-documents==11.4.0

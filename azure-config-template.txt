@@ -1,8 +1,8 @@
 # ============================================================
-# Azure Auto Insurance Claims System - Environment Variables
+# Azure App Service - Application Settings Template
 # ============================================================
-# IMPORTANT: Copy this file to .env and fill in your actual values
-# Never commit the .env file to version control
+# Copy these settings to Azure Portal → App Service → Configuration → Application Settings
+# Or use Azure CLI to set them in bulk
 
 # ============================================================
 # REQUIRED: Azure AI Project Configuration
@@ -20,7 +20,7 @@ AZURE_OPENAI_ENDPOINT=https://your-openai-resource.openai.azure.com/
 AZURE_OPENAI_API_KEY=your-azure-openai-api-key-here
 
 # ============================================================
-# REQUIRED: Cosmos DB Configuration (Memory Storage)
+# REQUIRED: Cosmos DB Configuration
 # ============================================================
 COSMOS_DB_ENDPOINT=https://your-cosmos-account.documents.azure.com:443/
 COSMOS_DB_KEY=your-cosmos-db-key-here
@@ -28,26 +28,27 @@ COSMOS_DB_DATABASE_NAME=insurance
 COSMOS_DB_CONTAINER_NAME=data
 
 # ============================================================
-# REQUIRED: Azure AI Search Configuration
+# REQUIRED: Azure Blob Storage Configuration
+# ============================================================
+AZURE_STORAGE_ACCOUNT_NAME=yourstorageaccountname
+AZURE_STORAGE_ACCOUNT_KEY=your-storage-account-key-here
+AZURE_STORAGE_CONTAINER_NAME=vehicle-insurance
+
+# ============================================================
+# OPTIONAL: Azure AI Search Configuration
 # ============================================================
 SEARCH_ENDPOINT=https://your-search-service.search.windows.net/
-SEARCH_KEY=your-search-service-key-here
-
-# Azure AI Search Index Names (default values)
+SEARCH_KEY=your-search-admin-key-here
 POLICY_INDEX_NAME=policy
 INSURANCE_INDEX_NAME=insurance
 BILL_INDEX_NAME=bill
 
 # ============================================================
-# REQUIRED: Azure Blob Storage Configuration
+# REQUIRED: CORS Configuration
 # ============================================================
-# Option 1: Use Account Name and Key
-AZURE_STORAGE_ACCOUNT_NAME=your-storage-account-name
-AZURE_STORAGE_ACCOUNT_KEY=your-storage-account-key-here
-AZURE_STORAGE_CONTAINER_NAME=vehicle-insurance
-
-# Option 2: Or use Connection String instead
-# AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=https;AccountName=your-account;AccountKey=YOUR_KEY;EndpointSuffix=core.windows.net
+# Comma-separated list of allowed frontend URLs
+# For production, use your actual frontend URL(s)
+CORS_ORIGINS=https://your-frontend.azurewebsites.net,https://www.yourdomain.com
 
 # ============================================================
 # OPTIONAL: Audit API Configuration
@@ -61,16 +62,26 @@ AZURE_AI_ENDPOINT=https://your-ai-endpoint.cognitiveservices.azure.com/
 AZURE_AI_API_VERSION=2025-05-01-preview
 
 # ============================================================
-# OPTIONAL: Frontend Configuration (Next.js)
+# AZURE CLI COMMAND TO SET ALL AT ONCE
 # ============================================================
-# NEXT_PUBLIC_API_URL=http://localhost:8001
-# NEXT_PUBLIC_STORAGE_ACCOUNT_NAME=your-storage-account-name
-# NEXT_PUBLIC_CONTAINER_NAME=vehicle-insurance
+# Replace values with your actual credentials and run:
 
-# ============================================================
-# OPTIONAL: CORS Configuration for Production
-# ============================================================
-# Comma-separated list of allowed frontend URLs
-# For local development: http://localhost:3000,http://127.0.0.1:3000
-# For production: https://your-frontend.azurewebsites.net
-CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+az webapp config appsettings set \
+  --name YOUR-APP-NAME \
+  --resource-group YOUR-RESOURCE-GROUP \
+  --settings \
+    AZURE_ENDPOINT="https://eastus2.api.azureml.ms" \
+    AZURE_RESOURCE_GROUP="your-rg" \
+    AZURE_SUBSCRIPTION_ID="your-sub-id" \
+    AZURE_PROJECT_NAME="your-project" \
+    AZURE_OPENAI_DEPLOYMENT_NAME="gpt-4o" \
+    AZURE_OPENAI_ENDPOINT="https://your-openai.openai.azure.com/" \
+    AZURE_OPENAI_API_KEY="your-key" \
+    COSMOS_DB_ENDPOINT="https://your-cosmos.documents.azure.com:443/" \
+    COSMOS_DB_KEY="your-key" \
+    COSMOS_DB_DATABASE_NAME="insurance" \
+    COSMOS_DB_CONTAINER_NAME="data" \
+    AZURE_STORAGE_ACCOUNT_NAME="yourstorageaccount" \
+    AZURE_STORAGE_ACCOUNT_KEY="your-key" \
+    AZURE_STORAGE_CONTAINER_NAME="vehicle-insurance" \
+    CORS_ORIGINS="https://your-frontend.azurewebsites.net"
