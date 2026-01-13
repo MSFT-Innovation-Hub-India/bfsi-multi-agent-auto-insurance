@@ -1,40 +1,44 @@
 """
 Azure Blob Storage Service for Vehicle Insurance Claims
 Provides document management functionality for claim processing
+Uses Managed Identity (DefaultAzureCredential) for authentication
 """
 
 import os
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
-from azure.storage.blob import BlobServiceClient, generate_blob_sas, BlobSasPermissions
+from azure.storage.blob import BlobServiceClient, BlobSasPermissions
+from azure.identity import DefaultAzureCredential
 
 # Load environment variables
 load_dotenv()
 
 # Azure Blob Storage Configuration
-STORAGE_ACCOUNT_NAME = os.getenv("STORAGE_ACCOUNT_NAME")
-STORAGE_ACCOUNT_KEY = os.getenv("STORAGE_ACCOUNT_KEY")
-CONTAINER_NAME = os.getenv("CONTAINER_NAME", "vehicle-insurance")
+STORAGE_ACCOUNT_NAME = os.getenv("AZURE_STORAGE_ACCOUNT_NAME") or os.getenv("STORAGE_ACCOUNT_NAME")
+CONTAINER_NAME = os.getenv("AZURE_STORAGE_CONTAINER_NAME") or os.getenv("CONTAINER_NAME", "vehicle-insurance")
 
 
 class BlobStorageService:
-    """Service for managing documents in Azure Blob Storage"""
+    """Service for managing documents in Azure Blob Storage using Managed Identity"""
     
     def __init__(self):
-        """Initialize the blob storage service"""
-        if not STORAGE_ACCOUNT_NAME or not STORAGE_ACCOUNT_KEY:
-            raise ValueError("Azure Storage credentials not found in environment variables")
+        """Initialize the blob storage service with Managed Identity"""
+        if not STORAGE_ACCOUNT_NAME:
+            raise ValueError("AZURE_STORAGE_ACCOUNT_NAME not found in environment variables")
         
-        self.connection_string = (
-            f"DefaultEndpointsProtocol=https;"
-            f"AccountName={STORAGE_ACCOUNT_NAME};"
-            f"AccountKey={STORAGE_ACCOUNT_KEY};"
-            f"EndpointSuffix=core.windows.net"
-        )
+        self.account_name = STORAGE_ACCOUNT_NAME
         self.container_name = CONTAINER_NAME
-        self.blob_service_client = BlobServiceClient.from_connection_string(self.connection_string)
+        self.account_url = f"https://{STORAGE_ACCOUNT_NAME}.blob.core.windows.net"
+        
+        # Use DefaultAzureCredential for Managed Identity authentication
+        self.credential = DefaultAzureCredential()
+        self.blob_service_client = BlobServiceClient(
+            account_url=self.account_url,
+            credential=self.credential
+        )
         self.container_client = self.blob_service_client.get_container_client(self.container_name)
+        print(f"[OK] Blob Storage initialized with Managed Identity for account: {STORAGE_ACCOUNT_NAME}")
     
     def list_all_documents(self) -> List[Dict[str, Any]]:
         """
@@ -129,7 +133,7 @@ class BlobStorageService:
         expiry_hours: int = 24
     ) -> str:
         """
-        Generate a SAS URL for accessing a document
+        Generate a SAS URL for accessing a document using User Delegation Key
         
         Args:
             document_name: Name of the document
@@ -139,23 +143,35 @@ class BlobStorageService:
         Returns:
             SAS URL string
         """
+        from azure.storage.blob import generate_blob_sas, UserDelegationKey
+        
         try:
             # Construct the blob name (path in container)
             blob_name = f"{claim_id}/{document_name}"
             
-            # Generate SAS token
+            # Get user delegation key for SAS token generation with Managed Identity
+            start_time = datetime.now(timezone.utc)
+            expiry_time = start_time + timedelta(hours=expiry_hours)
+            
+            user_delegation_key = self.blob_service_client.get_user_delegation_key(
+                key_start_time=start_time,
+                key_expiry_time=expiry_time
+            )
+            
+            # Generate SAS token using user delegation key
             sas_token = generate_blob_sas(
-                account_name=STORAGE_ACCOUNT_NAME,
+                account_name=self.account_name,
                 container_name=self.container_name,
                 blob_name=blob_name,
-                account_key=STORAGE_ACCOUNT_KEY,
+                user_delegation_key=user_delegation_key,
                 permission=BlobSasPermissions(read=True),
-                expiry=datetime.now(timezone.utc) + timedelta(hours=expiry_hours)
+                expiry=expiry_time,
+                start=start_time
             )
             
             # Construct the full URL
             blob_url = (
-                f"https://{STORAGE_ACCOUNT_NAME}.blob.core.windows.net/"
+                f"https://{self.account_name}.blob.core.windows.net/"
                 f"{self.container_name}/{blob_name}?{sas_token}"
             )
             

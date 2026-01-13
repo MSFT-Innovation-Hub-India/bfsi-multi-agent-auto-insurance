@@ -58,12 +58,12 @@ class AutoInsuranceOrchestrator:
                 name="main-auto-insurance-policy-expert",
                 instructions=instructions,
                 tools=self.agent_factory._create_search_tool(
-                    "policy",
+                    "policyauto",
                     {"content": "content", "title": "document_title", 
                      "source": "document_path", "claim_type": "claim_category"}
                 ).definitions,
                 tool_resources=self.agent_factory._create_search_tool(
-                    "policy",
+                    "policyauto",
                     {"content": "content", "title": "document_title", 
                      "source": "document_path", "claim_type": "claim_category"}
                 ).resources,

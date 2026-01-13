@@ -32,7 +32,6 @@ class Config:
     # Cosmos DB Configuration
     # ============================================================
     COSMOS_DB_ENDPOINT: str = os.getenv("COSMOS_DB_ENDPOINT", "")
-    COSMOS_DB_KEY: str = os.getenv("COSMOS_DB_KEY", "")
     COSMOS_DB_DATABASE_NAME: str = os.getenv("COSMOS_DB_DATABASE_NAME", "insurance")
     COSMOS_DB_CONTAINER_NAME: str = os.getenv("COSMOS_DB_CONTAINER_NAME", "data")
     
@@ -46,11 +45,9 @@ class Config:
     BILL_INDEX_NAME: str = os.getenv("BILL_INDEX_NAME", "bill")
     
     # ============================================================
-    # Azure Blob Storage Configuration
+    # Azure Blob Storage Configuration (uses Managed Identity)
     # ============================================================
     AZURE_STORAGE_ACCOUNT_NAME: str = os.getenv("AZURE_STORAGE_ACCOUNT_NAME", "")
-    AZURE_STORAGE_ACCOUNT_KEY: str = os.getenv("AZURE_STORAGE_ACCOUNT_KEY", "")
-    AZURE_STORAGE_CONNECTION_STRING: str = os.getenv("AZURE_STORAGE_CONNECTION_STRING", "")
     AZURE_STORAGE_CONTAINER_NAME: str = os.getenv("AZURE_STORAGE_CONTAINER_NAME", "vehicle-insurance")
     
     # ============================================================
@@ -68,6 +65,7 @@ class Config:
     def validate_required_config(cls) -> list[str]:
         """
         Validate that all required configuration values are set.
+        Uses Managed Identity for authentication - only endpoints are required.
         Returns a list of missing configuration keys.
         """
         missing_configs = []
@@ -80,24 +78,19 @@ class Config:
             ("AZURE_PROJECT_NAME", cls.AZURE_PROJECT_NAME),
         ]
         
-        # Required Cosmos DB configs
+        # Required Cosmos DB configs (endpoint only - uses Managed Identity)
         required_cosmos_configs = [
             ("COSMOS_DB_ENDPOINT", cls.COSMOS_DB_ENDPOINT),
-            ("COSMOS_DB_KEY", cls.COSMOS_DB_KEY),
         ]
         
-        # Required Storage configs (either connection string OR account name + key)
-        storage_config_valid = (
-            cls.AZURE_STORAGE_CONNECTION_STRING or
-            (cls.AZURE_STORAGE_ACCOUNT_NAME and cls.AZURE_STORAGE_ACCOUNT_KEY)
-        )
+        # Required Storage configs (account name only - uses Managed Identity)
+        required_storage_configs = [
+            ("AZURE_STORAGE_ACCOUNT_NAME", cls.AZURE_STORAGE_ACCOUNT_NAME),
+        ]
         
-        for config_name, config_value in required_azure_configs + required_cosmos_configs:
+        for config_name, config_value in required_azure_configs + required_cosmos_configs + required_storage_configs:
             if not config_value:
                 missing_configs.append(config_name)
-        
-        if not storage_config_valid:
-            missing_configs.append("AZURE_STORAGE_CONNECTION_STRING or (AZURE_STORAGE_ACCOUNT_NAME + AZURE_STORAGE_ACCOUNT_KEY)")
         
         return missing_configs
     
@@ -117,12 +110,13 @@ class Config:
             for config in missing:
                 print(f"   - {config}")
         
-        print("\n📋 Loaded Configurations:")
+        print("\n📋 Loaded Configurations (using Managed Identity):")
         print(f"   Azure Endpoint: {'✅' if cls.AZURE_ENDPOINT else '❌'}")
         print(f"   Azure Resource Group: {'✅' if cls.AZURE_RESOURCE_GROUP else '❌'}")
-        print(f"   Cosmos DB: {'✅' if cls.COSMOS_DB_ENDPOINT else '❌'}")
-        print(f"   Blob Storage: {'✅' if (cls.AZURE_STORAGE_CONNECTION_STRING or cls.AZURE_STORAGE_ACCOUNT_NAME) else '❌'}")
+        print(f"   Cosmos DB Endpoint: {'✅' if cls.COSMOS_DB_ENDPOINT else '❌'}")
+        print(f"   Blob Storage Account: {'✅' if cls.AZURE_STORAGE_ACCOUNT_NAME else '❌'}")
         print(f"   AI Search: {'✅' if cls.SEARCH_ENDPOINT else '⚠️ Optional'}")
+        print(f"   🔐 Authentication: Managed Identity (DefaultAzureCredential)")
         print("="*60 + "\n")
 
 

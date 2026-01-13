@@ -1,6 +1,7 @@
 """
 Synthesis Engine
 Generates final claim recommendations
+Uses Managed Identity for Azure OpenAI authentication
 """
 
 import os
@@ -11,6 +12,7 @@ import semantic_kernel as sk
 from semantic_kernel.connectors.ai.open_ai import AzureChatCompletion
 from semantic_kernel.core_plugins import TextPlugin
 from semantic_kernel.functions import KernelArguments
+from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 
 from .models import ClaimData
 from .data_extractors import DataExtractor
@@ -27,24 +29,45 @@ class SynthesisEngine:
         self.instructions_dir = Path(__file__).parent.parent / "instructions"
     
     def _setup_kernel(self):
-        """Initialize Semantic Kernel"""
+        """Initialize Semantic Kernel with Managed Identity"""
         try:
-            api_key = os.getenv("AZURE_OPENAI_API_KEY")
             endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+            api_key = os.getenv("AZURE_OPENAI_API_KEY")
+            deployment_name = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-4o")
             
-            if api_key and endpoint:
-                self.kernel.add_service(
-                    AzureChatCompletion(
-                        service_id="azure_openai_chat",
-                        endpoint=endpoint,
-                        deployment_name="gpt-4o",
-                        api_key=api_key,
-                        api_version="2024-02-01"
+            if endpoint:
+                # Try Managed Identity first, fall back to API key
+                if api_key and api_key != "your-azure-openai-api-key-here":
+                    # Use API key if provided
+                    self.kernel.add_service(
+                        AzureChatCompletion(
+                            service_id="azure_openai_chat",
+                            endpoint=endpoint,
+                            deployment_name=deployment_name,
+                            api_key=api_key,
+                            api_version="2024-02-01"
+                        )
                     )
-                )
-                print("[OK] Semantic Kernel initialized with Azure OpenAI")
+                    print("[OK] Semantic Kernel initialized with Azure OpenAI (API Key)")
+                else:
+                    # Use Managed Identity via DefaultAzureCredential
+                    credential = DefaultAzureCredential()
+                    token_provider = get_bearer_token_provider(
+                        credential, 
+                        "https://cognitiveservices.azure.com/.default"
+                    )
+                    self.kernel.add_service(
+                        AzureChatCompletion(
+                            service_id="azure_openai_chat",
+                            endpoint=endpoint,
+                            deployment_name=deployment_name,
+                            ad_token_provider=token_provider,
+                            api_version="2024-02-01"
+                        )
+                    )
+                    print("[OK] Semantic Kernel initialized with Azure OpenAI (Managed Identity)")
             else:
-                print("[WARNING] Azure OpenAI credentials not found, using fallback mode")
+                print("[WARNING] AZURE_OPENAI_ENDPOINT not found, using fallback mode")
             
             self.kernel.add_plugin(TextPlugin(), plugin_name="TextPlugin")
             

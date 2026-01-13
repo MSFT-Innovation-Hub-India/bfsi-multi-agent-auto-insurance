@@ -1,11 +1,13 @@
 """
 Cosmos DB Memory Manager
 Handles persistent storage and retrieval of agent responses
+Uses Managed Identity (DefaultAzureCredential) for authentication
 """
 
 import os
 from typing import Dict, Any, Optional, List
 from azure.cosmos import CosmosClient, PartitionKey
+from azure.identity import DefaultAzureCredential
 from datetime import datetime
 
 
@@ -13,24 +15,24 @@ class CosmosMemoryManager:
     """
     Manages persistent memory storage for agent responses using Azure Cosmos DB.
     Stores each agent's analysis results and allows retrieval by subsequent agents.
+    Uses Managed Identity for authentication.
     """
     
-    def __init__(self, cosmos_endpoint: str = None, cosmos_key: str = None):
-        """Initialize Cosmos DB client and container"""
+    def __init__(self, cosmos_endpoint: str = None):
+        """Initialize Cosmos DB client with Managed Identity"""
         try:
             # Get Cosmos DB configuration from environment variables
             self.cosmos_endpoint = cosmos_endpoint or os.getenv("COSMOS_DB_ENDPOINT")
-            self.cosmos_key = cosmos_key or os.getenv("COSMOS_DB_KEY")
             
-            if not self.cosmos_endpoint or not self.cosmos_key:
-                print("⚠️ Cosmos DB credentials not found in environment variables")
-                print("   Please set COSMOS_DB_ENDPOINT and COSMOS_DB_KEY")
+            if not self.cosmos_endpoint:
+                print("⚠️ COSMOS_DB_ENDPOINT not found in environment variables")
                 self.client = None
                 self.container = None
                 return
             
-            # Initialize Cosmos client
-            self.client = CosmosClient(self.cosmos_endpoint, self.cosmos_key)
+            # Initialize Cosmos client with Managed Identity
+            credential = DefaultAzureCredential()
+            self.client = CosmosClient(self.cosmos_endpoint, credential=credential)
             
             # Database and container configuration
             self.database_name = os.getenv("COSMOS_DB_DATABASE_NAME", "insurance")
@@ -46,7 +48,7 @@ class CosmosMemoryManager:
                 offer_throughput=400
             )
             
-            print("[OK] Cosmos DB Memory Manager initialized successfully")
+            print("[OK] Cosmos DB Memory Manager initialized with Managed Identity")
             
         except Exception as e:
             print(f"[ERROR] Error initializing Cosmos DB: {e}")

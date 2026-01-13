@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 from typing import Optional
 from azure.ai.projects import AIProjectClient
-from azure.ai.projects.models import AzureAISearchTool
+from azure.ai.projects.models import AzureAISearchTool, ConnectionType
 from azure.identity import DefaultAzureCredential
 
 
@@ -21,6 +21,10 @@ class AgentFactory:
         self.SUBSCRIPTION_ID = os.getenv("AZURE_SUBSCRIPTION_ID")
         self.PROJECT_NAME = os.getenv("AZURE_PROJECT_NAME")
         
+        # Search configuration from environment
+        self.SEARCH_ENDPOINT = os.getenv("SEARCH_ENDPOINT")
+        self.SEARCH_KEY = os.getenv("SEARCH_KEY")
+        
         if not all([self.ENDPOINT, self.RESOURCE_GROUP, self.SUBSCRIPTION_ID, self.PROJECT_NAME]):
             raise ValueError("Missing required Azure configuration. Please check your .env file.")
         
@@ -32,20 +36,35 @@ class AgentFactory:
             credential=DefaultAzureCredential()
         )
         
-        self.search_connection_id = self._find_search_connection()
+        self.search_connection_id = self._find_or_create_search_connection()
         self.instructions_dir = Path(__file__).parent.parent / "instructions"
     
-    def _find_search_connection(self) -> Optional[str]:
-        """Find Azure AI Search connection"""
+    def _find_or_create_search_connection(self) -> Optional[str]:
+        """Find existing Azure AI Search connection or create one from environment variables"""
         try:
+            # First try to find an existing connection
             conn_list = self.project_client.connections.list()
             for conn in conn_list:
                 if conn.connection_type == "CognitiveSearch":
                     print(f"[OK] Found Azure AI Search connection: {conn.id}")
                     return conn.id
-            raise Exception("No Azure AI Search connection found")
+            
+            # No connection found - try to use search endpoint directly if available
+            if self.SEARCH_ENDPOINT and self.SEARCH_KEY:
+                print(f"[INFO] No Azure AI Search connection in project, using direct search configuration")
+                print(f"[OK] Using Azure AI Search endpoint: {self.SEARCH_ENDPOINT}")
+                # Return a marker that we'll use direct configuration
+                return "DIRECT_SEARCH_CONFIG"
+            
+            print("[WARNING] No Azure AI Search connection found and no SEARCH_ENDPOINT/SEARCH_KEY configured")
+            return None
+            
         except Exception as e:
             print(f"[ERROR] Error finding search connection: {e}")
+            # Fall back to direct config if available
+            if self.SEARCH_ENDPOINT and self.SEARCH_KEY:
+                print(f"[INFO] Falling back to direct search configuration")
+                return "DIRECT_SEARCH_CONFIG"
             return None
     
     def _load_instruction(self, filename: str) -> str:
@@ -78,7 +97,7 @@ class AgentFactory:
     def create_policy_agent(self, instructions_file: str = "policy_coverage_agent.txt"):
         """Create policy analysis agent"""
         policy_search = self._create_search_tool(
-            "policy",
+            "policyauto",
             {
                 "content": "content",
                 "title": "document_title",
@@ -100,7 +119,7 @@ class AgentFactory:
     def create_inspection_agent(self, instructions: str):
         """Create inspection analysis agent"""
         inspection_search = self._create_search_tool(
-            "insurance",
+            "picturesauto",
             {
                 "content": "content",
                 "title": "document_title",
@@ -120,7 +139,7 @@ class AgentFactory:
     def create_bill_agent(self, instructions: str):
         """Create bill reimbursement agent"""
         bill_search = self._create_search_tool(
-            "bill",
+            "billsauto",
             {
                 "content": "content",
                 "title": "document_title",

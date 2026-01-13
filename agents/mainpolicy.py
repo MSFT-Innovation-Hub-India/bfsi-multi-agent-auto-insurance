@@ -22,7 +22,7 @@ ENDPOINT = os.getenv("AZURE_ENDPOINT")
 RESOURCE_GROUP = os.getenv("AZURE_RESOURCE_GROUP")
 SUBSCRIPTION_ID = os.getenv("AZURE_SUBSCRIPTION_ID")
 PROJECT_NAME = os.getenv("AZURE_PROJECT_NAME")
-INDEX_NAME = os.getenv("POLICY_INDEX_NAME", "policy")
+INDEX_NAME = os.getenv("POLICY_INDEX_NAME", "policyauto")
 
 # Step 2: Connect to your Azure AI Project
 project_client = AIProjectClient(

@@ -3,6 +3,7 @@ Real-Time FastAPI Server for Auto Insurance Claim Orchestrator
 Uses Server-Sent Events (SSE) to stream agent results as they complete
 """
 
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -30,7 +31,32 @@ AGENT_NAMES = {
     "FINAL_DECISION": "Final Decision Agent"
 }
 
-app = FastAPI(title="Auto Insurance Claim API - Real-Time", version="2.0.0")
+# Global orchestrator instance
+orchestrator: Optional[AutoInsuranceOrchestrator] = None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan context manager for startup and shutdown events"""
+    global orchestrator
+    # Startup
+    try:
+        orchestrator = AutoInsuranceOrchestrator()
+        print("✅ Real-Time Orchestrator initialized successfully")
+    except Exception as e:
+        print(f"❌ Failed to initialize orchestrator: {e}")
+        raise e
+    
+    yield  # Application runs here
+    
+    # Shutdown
+    if orchestrator:
+        orchestrator.cleanup()
+
+app = FastAPI(
+    title="Auto Insurance Claim API - Real-Time",
+    version="2.0.0",
+    lifespan=lifespan
+)
 
 # Add CORS middleware to allow frontend connections
 # Read allowed origins from environment variable (comma-separated)
@@ -60,26 +86,6 @@ class StreamMessage(BaseModel):
     timestamp: str
     data: Optional[Dict[str, Any]] = None
 
-# Global orchestrator instance
-orchestrator: Optional[AutoInsuranceOrchestrator] = None
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize the orchestrator on startup"""
-    global orchestrator
-    try:
-        orchestrator = AutoInsuranceOrchestrator()
-        print("✅ Real-Time Orchestrator initialized successfully")
-    except Exception as e:
-        print(f"❌ Failed to initialize orchestrator: {e}")
-        raise e
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Cleanup orchestrator on shutdown"""
-    global orchestrator
-    if orchestrator:
-        orchestrator.cleanup()
 
 def create_sse_message(message: StreamMessage) -> str:
     """Format message for Server-Sent Events"""

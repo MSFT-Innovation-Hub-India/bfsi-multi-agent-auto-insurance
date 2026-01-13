@@ -113,8 +113,13 @@ class AuditAgent:
     
     def _create_audit_record(self, claim_id: str, customer_name: str, process_name: str, 
                            process_status: str, process_details: str, agent_name: str) -> bool:
-        """Create an audit record via direct API call"""
+        """Create an audit record via direct API call (optional - fails silently if unavailable)"""
         try:
+            # Skip if audit API is not configured or uses default placeholder
+            if not self.audit_api_base or "cosmosaudit.azurewebsites.net" in self.audit_api_base:
+                # Audit API not configured - skip silently
+                return True
+            
             audit_data = {
                 "claim_id": claim_id,
                 "customer_name": customer_name,
@@ -128,18 +133,18 @@ class AuditAgent:
                 f"{self.audit_api_base}/audit",
                 json=audit_data,
                 headers={"Content-Type": "application/json"},
-                timeout=10
+                timeout=5
             )
             
             if response.status_code == 200:
                 print(f"📝 Audit logged: {process_name} - {process_status} for claim {claim_id}")
                 return True
             else:
-                print(f"⚠️ Audit logging failed: HTTP {response.status_code}")
+                # Fail silently for audit logging
                 return False
                 
         except Exception as e:
-            print(f"❌ Error creating audit record: {str(e)}")
+            # Fail silently - audit is optional
             return False
     
     def get_audit_history(self, customer_id: str) -> Optional[Dict[str, Any]]:
