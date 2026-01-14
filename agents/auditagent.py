@@ -5,8 +5,17 @@ from typing import Dict, Any, Optional
 from dotenv import load_dotenv
 from azure.ai.projects import AIProjectClient
 from azure.identity import DefaultAzureCredential
-from azure.ai.projects.models import OpenApiTool, OpenApiAnonymousAuthDetails, ToolSet
 from jsonref import loads
+
+# OpenApiTool may not be available in all SDK versions - import lazily
+OPENAPI_TOOL_AVAILABLE = False
+try:
+    from azure.ai.projects.models import OpenApiTool, OpenApiAnonymousAuthDetails, ToolSet
+    OPENAPI_TOOL_AVAILABLE = True
+except ImportError:
+    OpenApiTool = None
+    OpenApiAnonymousAuthDetails = None
+    ToolSet = None
 
 # Load environment variables
 load_dotenv()
@@ -42,8 +51,17 @@ class AuditAgent:
         """Create the audit agent if not already created"""
         if self.agent is None:
             try:
+                # Check if OpenApiTool is available
+                if not OPENAPI_TOOL_AVAILABLE:
+                    print("⚠️ OpenApiTool not available in this SDK version - audit agent will use direct API calls only")
+                    return
+                
                 # Load swagger.json from the project root
                 swagger_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "swagger.json")
+                if not os.path.exists(swagger_path):
+                    print("⚠️ swagger.json not found - audit agent will use direct API calls only")
+                    return
+                    
                 with open(swagger_path, "r") as f:
                     audit_api_spec = loads(f.read())
                 
