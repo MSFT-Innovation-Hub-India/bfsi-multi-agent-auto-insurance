@@ -76,13 +76,15 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_33AA51297C9F4C8387D8AC0B251B9027 }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_6D566104E80E47E396902C0E515A5C9A }}
 
-      - name: 'Deploy to Azure Web App'
-        id: deploy-to-webapp
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: 'autoinsurance-frontend'
-          slot-name: 'Production'
-          package: .
-          clean: true
+      - name: Create ZIP and deploy
+        run: |
+          # Create ZIP file
+          zip -r deploy.zip .
+          
+          # Get resource group
+          RG=$(az webapp show --name autoinsurance-frontend --query resourceGroup -o tsv)
+          
+          # Deploy with clean flag and skip build
+          az webapp deploy --name autoinsurance-frontend --resource-group $RG --src-path deploy.zip --type zip --clean true
 
           
