@@ -172,16 +172,14 @@ export default function AgentWorkflowPage() {
           currentStep: 5,
           progress: 100,
         });
-      },
-      // onError callback
-      (error: Error) => {
-        console.error('❌ Processing error:', error);
-        setWorkflowStatus(prev => ({
-          ...prev,
-          status: 'failed',
-        }));
       }
-    );
+    ).catch((error: Error) => {
+      console.error('❌ Processing error:', error);
+      setWorkflowStatus(prev => ({
+        ...prev,
+        status: 'failed',
+      }));
+    });
   }, [claimId, claimantName]);
 
   const openResponsePopup = (agentName: string, step: number) => {
