@@ -81,10 +81,11 @@ jobs:
           # Create ZIP file
           zip -r deploy.zip .
           
-          # Get resource group
-          RG=$(az webapp show --name autoinsurance-frontend --query resourceGroup -o tsv)
+          # Get resource group using list command
+          RG=$(az webapp list --query "[?name=='autoinsurance-frontend'].resourceGroup" -o tsv)
+          echo "Resource Group: $RG"
           
-          # Deploy with clean flag and skip build
-          az webapp deploy --name autoinsurance-frontend --resource-group $RG --src-path deploy.zip --type zip --clean true
+          # Deploy with clean flag
+          az webapp deploy --name autoinsurance-frontend --resource-group "$RG" --src-path deploy.zip --type zip --clean true
 
           
