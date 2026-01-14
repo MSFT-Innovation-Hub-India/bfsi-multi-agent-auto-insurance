@@ -93,7 +93,7 @@ export default function AgentWorkflowPage() {
         const progress = calculateProgress(state);
         setWorkflowStatus({
           status: state.overall_status === 'completed' ? 'completed' : 
-                  state.overall_status === 'error' ? 'failed' : 'processing',
+                  state.overall_status === 'failed' ? 'failed' : 'processing',
           currentStep: state.current_step,
           progress: progress,
         });
