@@ -30,7 +30,7 @@ export async function getAgentOutputsByClaimId(claimId: string): Promise<AgentOu
     
     if (!response.ok) {
       console.warn(`Backend API not available (${response.status}), using mock data`);
-      return getMockAgentOutputs(claimId);
+      return normalizeOutputs(getMockAgentOutputs(claimId));
     }
     
     const data = await response.json();
@@ -180,7 +180,8 @@ export async function getClaimStats(claimId: string): Promise<{
 }> {
   try {
     const outputs = await getAgentOutputsByClaimId(claimId);
-    const completedOutputs = outputs.filter(o => o.status === 'completed');
+    const outputValues = Object.values(outputs);
+    const completedOutputs = outputValues.filter(o => o.status === 'completed');
     const totalTime = completedOutputs.reduce((sum, o) => sum + (o.processing_time_seconds || 0), 0);
     
     return {
