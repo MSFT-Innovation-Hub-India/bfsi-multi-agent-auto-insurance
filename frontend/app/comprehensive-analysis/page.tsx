@@ -248,10 +248,15 @@ function parseAgentOutputs(
     finalJson.confidence ??
     extractPercentage(finalText, 98);
 
-  // Parse claim info
+  // Parse claim info - ensure all values are strings
   const coverageType = policyOutput?.extracted_data?.coverage_type;
-  const vehicleInfo = typeof coverageType === 'string' ? coverageType : 'Vehicle';
-  const policyNumber = policyOutput?.extracted_data?.policy_number || claimId || 'N/A';
+  const vehicleInfo: string = typeof coverageType === 'string' ? coverageType : 'Vehicle';
+  const policyNum = policyOutput?.extracted_data?.policy_number;
+  const policyNumber: string = typeof policyNum === 'string' ? policyNum : (claimId || 'N/A');
+  const billAmount = billOutput?.extracted_data?.actual_bill_amount;
+  const claimAmount: number = typeof billAmount === 'number' ? billAmount : 56000;
+  const riskScoreVal = finalOutput?.extracted_data?.risk_score;
+  const riskScore: string = typeof riskScoreVal === 'string' ? riskScoreVal : 'LOW';
 
   return {
     claimInfo: {
@@ -259,7 +264,7 @@ function parseAgentOutputs(
       claimantName: claimantName || 'Claimant',
       vehicleType: vehicleInfo,
       registrationNumber: policyNumber,
-      claimAmount: billOutput?.extracted_data?.actual_bill_amount || 56000,
+      claimAmount: claimAmount,
       submittedDate: new Date(Date.now() - 172800000).toISOString().split('T')[0],
       processedDate: new Date().toISOString().split('T')[0],
       processingTime: '~4 mins'
@@ -269,7 +274,7 @@ function parseAgentOutputs(
       approvedAmount: reimbursementAmount,
       deductible: deductible,
       confidence: confidence,
-      riskScore: finalOutput?.extracted_data?.risk_score || 'LOW',
+      riskScore: riskScore,
       fraudProbability: 100 - confidence
     },
     agentAnalysis: [
