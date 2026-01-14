@@ -8,6 +8,11 @@ on:
   push:
     branches:
       - master
+    paths:
+      - "**/*.py"
+      - "requirements.txt"
+      - ".github/workflows/master_autoinsurance.yml"
+      
   workflow_dispatch:
 
 jobs:
