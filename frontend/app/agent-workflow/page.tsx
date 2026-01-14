@@ -72,6 +72,23 @@ function AgentWorkflowContent() {
     progress: 0,
   });
 
+  // Effect to set sequential agents to 'processing' when prerequisites are met
+  // This ensures the loading spinner shows immediately when the card appears
+  useEffect(() => {
+    // Agent 3 should show processing when agents 1 and 2 are completed
+    if (agentStates[1] === 'completed' && agentStates[2] === 'completed' && agentStates[3] === 'pending') {
+      setAgentStates(prev => ({ ...prev, 3: 'processing' }));
+    }
+    // Agent 4 should show processing when agent 3 is completed
+    if (agentStates[3] === 'completed' && agentStates[4] === 'pending') {
+      setAgentStates(prev => ({ ...prev, 4: 'processing' }));
+    }
+    // Agent 5 should show processing when agent 4 is completed
+    if (agentStates[4] === 'completed' && agentStates[5] === 'pending') {
+      setAgentStates(prev => ({ ...prev, 5: 'processing' }));
+    }
+  }, [agentStates]);
+
   // Real-time API integration
   useEffect(() => {
     if (!claimId || !claimantName) return;
@@ -492,9 +509,9 @@ function AgentWorkflowContent() {
                   <motion.div
                     initial={{ scale: 0.5, opacity: 0, y: 20 }}
                     animate={{ 
-                      scale: (agentStates[1] === 'completed' && agentStates[2] === 'completed' && agentStates[3] !== 'pending') ? 1 : 0.5,
-                      opacity: (agentStates[1] === 'completed' && agentStates[2] === 'completed' && agentStates[3] !== 'pending') ? 1 : 0,
-                      y: (agentStates[1] === 'completed' && agentStates[2] === 'completed' && agentStates[3] !== 'pending') ? 0 : 20
+                      scale: (agentStates[1] === 'completed' && agentStates[2] === 'completed') ? 1 : 0.5,
+                      opacity: (agentStates[1] === 'completed' && agentStates[2] === 'completed') ? 1 : 0,
+                      y: (agentStates[1] === 'completed' && agentStates[2] === 'completed') ? 0 : 20
                     }}
                     transition={{ duration: 0.5 }}
                     className="flex flex-col items-center"
@@ -564,9 +581,9 @@ function AgentWorkflowContent() {
                   <motion.div
                     initial={{ scale: 0.5, opacity: 0, y: 20 }}
                     animate={{ 
-                      scale: ((agentStates[1] === 'completed' && agentStates[2] === 'completed' && agentStates[3] === 'completed') && agentStates[4] !== 'pending') ? 1 : 0.5,
-                      opacity: ((agentStates[1] === 'completed' && agentStates[2] === 'completed' && agentStates[3] === 'completed') && agentStates[4] !== 'pending') ? 1 : 0,
-                      y: ((agentStates[1] === 'completed' && agentStates[2] === 'completed' && agentStates[3] === 'completed') && agentStates[4] !== 'pending') ? 0 : 20
+                      scale: (agentStates[3] === 'completed') ? 1 : 0.5,
+                      opacity: (agentStates[3] === 'completed') ? 1 : 0,
+                      y: (agentStates[3] === 'completed') ? 0 : 20
                     }}
                     transition={{ duration: 0.5 }}
                     className="flex flex-col items-center"
@@ -637,9 +654,9 @@ function AgentWorkflowContent() {
                   <motion.div
                     initial={{ scale: 0.5, opacity: 0, y: 20 }}
                     animate={{ 
-                      scale: (agentStates[4] === 'completed' && agentStates[5] !== 'pending') ? 1 : 0.5,
-                      opacity: (agentStates[4] === 'completed' && agentStates[5] !== 'pending') ? 1 : 0,
-                      y: (agentStates[4] === 'completed' && agentStates[5] !== 'pending') ? 0 : 20
+                      scale: (agentStates[4] === 'completed') ? 1 : 0.5,
+                      opacity: (agentStates[4] === 'completed') ? 1 : 0,
+                      y: (agentStates[4] === 'completed') ? 0 : 20
                     }}
                     transition={{ duration: 0.5 }}
                     className="flex flex-col items-center"
