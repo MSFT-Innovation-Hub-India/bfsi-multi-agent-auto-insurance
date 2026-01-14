@@ -73,11 +73,6 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_33AA51297C9F4C8387D8AC0B251B9027 }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_6D566104E80E47E396902C0E515A5C9A }}
 
-      - name: Clean old deployment
-        run: |
-          az webapp config appsettings set --name autoinsurance-frontend --resource-group $(az webapp show --name autoinsurance-frontend --query resourceGroup -o tsv) --settings SCM_DO_BUILD_DURING_DEPLOYMENT=false
-          az webapp deployment source config-zip --name autoinsurance-frontend --resource-group $(az webapp show --name autoinsurance-frontend --query resourceGroup -o tsv) --src /dev/null 2>/dev/null || true
-
       - name: 'Deploy to Azure Web App'
         id: deploy-to-webapp
         uses: azure/webapps-deploy@v3
