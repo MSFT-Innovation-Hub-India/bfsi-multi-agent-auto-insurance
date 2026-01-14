@@ -15,9 +15,9 @@ import os
 from datetime import datetime
 import uvicorn
 
-# Import the orchestrator and blob service
-from orchestrator import AutoInsuranceOrchestrator, ClaimData
-from blob_service import get_blob_service
+# LAZY IMPORTS - these will be imported only when needed
+# from orchestrator import AutoInsuranceOrchestrator, ClaimData
+# from blob_service import get_blob_service
 
 # ============================================================
 # STANDARDIZED AGENT NAME MAPPING
@@ -32,16 +32,18 @@ AGENT_NAMES = {
 }
 
 # Global orchestrator instance (lazy initialization)
-orchestrator: Optional[AutoInsuranceOrchestrator] = None
+# Type hint uses Any to avoid importing the heavy module at startup
+orchestrator: Optional[Any] = None
 orchestrator_lock = asyncio.Lock()
 
-async def get_orchestrator() -> AutoInsuranceOrchestrator:
+async def get_orchestrator():
     """Lazy initialization of orchestrator - only initialize when first needed"""
     global orchestrator
     if orchestrator is None:
         async with orchestrator_lock:
             if orchestrator is None:  # Double-check after acquiring lock
-                print("🔄 Initializing orchestrator on first request...")
+                print("🔄 Importing and initializing orchestrator on first request...")
+                from orchestrator import AutoInsuranceOrchestrator
                 orchestrator = AutoInsuranceOrchestrator()
                 print("✅ Real-Time Orchestrator initialized successfully")
     return orchestrator
@@ -290,6 +292,9 @@ async def process_claim_stream(claim_id: str, claim_description: str) -> AsyncGe
         
         start_time = datetime.now()
         try:
+            # Import ClaimData here to avoid import at module load time
+            from orchestrator import ClaimData
+            
             # Retrieve all agent data from memory to synthesize
             all_memory = await orch.memory_manager.retrieve_previous_responses(
                 claim_id, 
@@ -503,6 +508,7 @@ async def process_claim_batch(request: ClaimRequest):
         
         # Agent 5: Final Recommendation
         try:
+            from orchestrator import ClaimData
             final_start = datetime.now()
             claim_data = ClaimData(claim_id=request.claim_id)
             if response.policy_analysis:
@@ -582,6 +588,7 @@ async def health_check():
 async def list_all_documents():
     """List all documents in the vehicle-insurance container"""
     try:
+        from blob_service import get_blob_service
         blob_service = get_blob_service()
         documents = blob_service.list_all_documents()
         return {"documents": documents, "count": len(documents)}
@@ -593,6 +600,7 @@ async def list_all_documents():
 async def list_claim_documents(claim_id: str):
     """List all documents for a specific claim"""
     try:
+        from blob_service import get_blob_service
         blob_service = get_blob_service()
         documents = blob_service.list_claim_documents(claim_id)
         return documents
@@ -609,6 +617,7 @@ class SasUrlRequest(BaseModel):
 async def get_sas_url(request: SasUrlRequest):
     """Generate SAS URL for a document"""
     try:
+        from blob_service import get_blob_service
         blob_service = get_blob_service()
         url = blob_service.get_document_sas_url(
             request.document_name,
