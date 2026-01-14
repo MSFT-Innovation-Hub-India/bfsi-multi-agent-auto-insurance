@@ -36,10 +36,16 @@ jobs:
           # Copy the standalone build (includes auto-generated server.js)
           cp -r .next/standalone/. ./deploy/
           # Copy static files
-          mkdir -p ./deploy/.next
           cp -r .next/static ./deploy/.next/static
           # Copy public folder if it exists
           [ -d public ] && cp -r public ./deploy/public || echo "No public folder"
+          # Debug: show what we're deploying
+          echo "=== Deploy folder structure ==="
+          find ./deploy -type f -name "*.js" | head -20
+          echo "=== .next folder contents ==="
+          ls -la ./deploy/.next/ || echo "No .next folder"
+          echo "=== Checking for BUILD_ID ==="
+          cat ./deploy/.next/BUILD_ID || echo "No BUILD_ID found"
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
@@ -67,6 +73,11 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_33AA51297C9F4C8387D8AC0B251B9027 }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_6D566104E80E47E396902C0E515A5C9A }}
 
+      - name: Clean old deployment
+        run: |
+          az webapp config appsettings set --name autoinsurance-frontend --resource-group $(az webapp show --name autoinsurance-frontend --query resourceGroup -o tsv) --settings SCM_DO_BUILD_DURING_DEPLOYMENT=false
+          az webapp deployment source config-zip --name autoinsurance-frontend --resource-group $(az webapp show --name autoinsurance-frontend --query resourceGroup -o tsv) --src /dev/null 2>/dev/null || true
+
       - name: 'Deploy to Azure Web App'
         id: deploy-to-webapp
         uses: azure/webapps-deploy@v3
@@ -74,5 +85,6 @@ jobs:
           app-name: 'autoinsurance-frontend'
           slot-name: 'Production'
           package: .
+          clean: true
 
           
