@@ -76,8 +76,27 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_33AA51297C9F4C8387D8AC0B251B9027 }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_6D566104E80E47E396902C0E515A5C9A }}
 
+      - name: Disable Oryx build and set startup command
+        run: |
+          RG=$(az webapp list --query "[?name=='autoinsurance-frontend'].resourceGroup" -o tsv)
+          echo "Resource Group: $RG"
+          
+          # Disable Oryx build completely
+          az webapp config appsettings set --name autoinsurance-frontend --resource-group "$RG" --settings \
+            SCM_DO_BUILD_DURING_DEPLOYMENT=false \
+            WEBSITE_RUN_FROM_PACKAGE=0
+          
+          # Set startup command
+          az webapp config set --name autoinsurance-frontend --resource-group "$RG" --startup-file "node server.js"
+
       - name: Create ZIP and deploy
         run: |
+          # Debug: show what we're deploying
+          echo "=== Current directory contents ==="
+          ls -la
+          echo "=== .next folder contents ==="
+          ls -la .next/ || echo "No .next folder"
+          
           # Create ZIP file
           zip -r deploy.zip .
           
@@ -87,5 +106,8 @@ jobs:
           
           # Deploy with clean flag
           az webapp deploy --name autoinsurance-frontend --resource-group "$RG" --src-path deploy.zip --type zip --clean true
+          
+          # Restart app to ensure new settings take effect
+          az webapp restart --name autoinsurance-frontend --resource-group "$RG"
 
           
