@@ -189,6 +189,9 @@ export async function checkApiHealth(): Promise<{
  * Calculate overall progress percentage from agent states
  */
 export function calculateProgress(state: ClaimProcessingState): number {
+  // Fixed total of 5 agents in the workflow
+  const TOTAL_AGENTS = 5;
+  
   const agentNames = Object.keys(state.agents);
   
   if (agentNames.length === 0) {
@@ -199,7 +202,7 @@ export function calculateProgress(state: ClaimProcessingState): number {
     name => state.agents[name].status === 'completed'
   ).length;
 
-  return Math.round((completedAgents / agentNames.length) * 100);
+  return Math.round((completedAgents / TOTAL_AGENTS) * 100);
 }
 
 /**
