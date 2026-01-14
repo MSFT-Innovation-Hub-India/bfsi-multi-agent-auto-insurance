@@ -325,12 +325,12 @@ function parseAgentOutputs(
       }
     ],
     riskAssessment: {
-      overall: finalOutput?.extracted_data?.risk_score || 'LOW',
+      overall: riskScore,
       factors: [
         { 
           factor: 'Policy Validity', 
           status: policyOutput?.extracted_data?.coverage_eligible ? 'PASS' : 'FAIL', 
-          score: policyOutput?.extracted_data?.policy_compliance_score || 100 
+          score: Number(policyOutput?.extracted_data?.policy_compliance_score) || 100 
         },
         { 
           factor: 'Document Authenticity', 
@@ -340,17 +340,17 @@ function parseAgentOutputs(
         { 
           factor: 'Damage Verification', 
           status: inspectionOutput?.extracted_data?.damage_authentic ? 'PASS' : 'FAIL', 
-          score: inspectionOutput?.extracted_data?.damage_authenticity_score || 92 
+          score: Number(inspectionOutput?.extracted_data?.damage_authenticity_score) || 92 
         },
         { 
           factor: 'Bill Validation', 
           status: 'PASS', 
-          score: billOutput?.extracted_data?.cost_reasonableness_score || 95 
+          score: Number(billOutput?.extracted_data?.cost_reasonableness_score) || 95 
         },
         { 
           factor: 'Fraud Indicators', 
           status: inspectionOutput?.extracted_data?.pre_existing_damage ? 'FAIL' : 'PASS', 
-          score: 100 - (finalOutput?.extracted_data?.fraud_probability || 6) 
+          score: 100 - (Number(finalOutput?.extracted_data?.fraud_probability) || 6) 
         }
       ]
     }
