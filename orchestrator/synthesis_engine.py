@@ -84,6 +84,20 @@ class SynthesisEngine:
         """Synthesize final claim recommendation"""
         print("\n🔍 Synthesizing Final Recommendation...")
         
+        # Debug: Log what data we received
+        print(f"📊 Claim Data received:")
+        print(f"   - claim_id: {claim_data.claim_id}")
+        print(f"   - policy_analysis: {len(claim_data.policy_analysis or '') } chars")
+        print(f"   - inspection_results: {len(claim_data.inspection_results or '')} chars")
+        print(f"   - bill_analysis: {len(claim_data.bill_analysis or '')} chars")
+        
+        if not claim_data.policy_analysis or len(claim_data.policy_analysis) < 50:
+            print("⚠️ WARNING: policy_analysis is empty or too short!")
+        if not claim_data.inspection_results or len(claim_data.inspection_results) < 50:
+            print("⚠️ WARNING: inspection_results is empty or too short!")
+        if not claim_data.bill_analysis or len(claim_data.bill_analysis) < 50:
+            print("⚠️ WARNING: bill_analysis is empty or too short!")
+        
         try:
             # Try Semantic Kernel first
             synthesis_instructions = self._load_instruction("synthesis_agent.txt")

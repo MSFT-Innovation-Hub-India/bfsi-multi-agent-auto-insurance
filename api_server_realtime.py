@@ -351,19 +351,33 @@ async def process_claim_stream(claim_id: str, claim_description: str) -> AsyncGe
             from orchestrator import ClaimData
             
             # Retrieve all agent data from memory to synthesize
+            print(f"📖 Retrieving memory for claim {claim_id}...")
             all_memory = await orch.memory_manager.retrieve_previous_responses(
                 claim_id, 
                 ["policy", "inspection", "bill_synthesis"]
             )
+            print(f"📖 Memory retrieved: {list(all_memory.keys())}")
             
-            # Create claim data object
+            # Create claim data object with data from memory
             claim_data = ClaimData(claim_id=claim_id)
+            
             if "policy" in all_memory:
                 claim_data.policy_analysis = all_memory["policy"]["response_data"]
+                print(f"✅ Policy data loaded: {len(claim_data.policy_analysis)} chars")
+            else:
+                print("⚠️ WARNING: Policy data NOT found in memory!")
+                
             if "inspection" in all_memory:
                 claim_data.inspection_results = all_memory["inspection"]["response_data"]
+                print(f"✅ Inspection data loaded: {len(claim_data.inspection_results)} chars")
+            else:
+                print("⚠️ WARNING: Inspection data NOT found in memory!")
+                
             if "bill_synthesis" in all_memory:
                 claim_data.bill_analysis = all_memory["bill_synthesis"]["response_data"]
+                print(f"✅ Bill data loaded: {len(claim_data.bill_analysis)} chars")
+            else:
+                print("⚠️ WARNING: Bill data NOT found in memory!")
             
             # Synthesize final recommendation with keepalive
             task = asyncio.create_task(orch.synthesize_final_recommendation(claim_data))
