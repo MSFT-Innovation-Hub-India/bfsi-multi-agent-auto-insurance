@@ -399,7 +399,7 @@ export default function RealtimeClaimProcessor() {
                       <div>
                         <CardTitle>Processing Status</CardTitle>
                         <CardDescription>
-                          Step {claimState.current_step} of {claimState.total_steps}
+                          Step {claimState.current_step} of 5
                         </CardDescription>
                       </div>
                       <Badge 
