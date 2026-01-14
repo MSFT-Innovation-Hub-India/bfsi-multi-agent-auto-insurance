@@ -100,6 +100,27 @@ def create_sse_message(message: StreamMessage) -> str:
     """Format message for Server-Sent Events"""
     return f"data: {json.dumps(message.dict())}\n\n"
 
+def create_keepalive() -> str:
+    """Create SSE keep-alive comment to prevent connection timeout"""
+    return ": keepalive\n\n"
+
+async def run_with_keepalive(coro, claim_id: str):
+    """
+    Run a coroutine while yielding keepalive messages every 10 seconds.
+    Returns (result, keepalive_messages_list) where keepalive_messages_list 
+    contains any keepalive messages that should have been sent.
+    """
+    task = asyncio.create_task(coro)
+    keepalives = []
+    while not task.done():
+        try:
+            await asyncio.wait_for(asyncio.shield(task), timeout=10.0)
+        except asyncio.TimeoutError:
+            # Task still running, add keepalive
+            keepalives.append(create_keepalive())
+            print(f"💓 Sending keepalive for {claim_id}")
+    return task.result(), keepalives
+
 async def process_claim_stream(claim_id: str, claim_description: str) -> AsyncGenerator[str, None]:
     """
     Stream claim processing results in real-time as each agent completes
@@ -150,13 +171,23 @@ async def process_claim_stream(claim_id: str, claim_description: str) -> AsyncGe
             except Exception as e:
                 return (AGENT_NAMES["COVERAGE_ASSESSMENT"], "error", None, 0, str(e))
         
-        # Run both agents in parallel
+        # Run both agents in parallel with keepalive
         parallel_start = datetime.now()
-        results = await asyncio.gather(
-            run_policy_lookup(),
-            run_coverage_assessment(),
-            return_exceptions=True
-        )
+        
+        # Create tasks
+        task1 = asyncio.create_task(run_policy_lookup())
+        task2 = asyncio.create_task(run_coverage_assessment())
+        all_tasks = [task1, task2]
+        
+        # Wait for tasks while sending keepalives
+        while not all(t.done() for t in all_tasks):
+            await asyncio.sleep(8)  # Send keepalive every 8 seconds
+            if not all(t.done() for t in all_tasks):
+                yield create_keepalive()
+                print(f"💓 Keepalive sent for parallel agents")
+        
+        # Gather results
+        results = [task1.result(), task2.result()]
         parallel_time = (datetime.now() - parallel_start).total_seconds()
         print(f"✅ Both policy agents completed in parallel in {parallel_time:.2f}s")
         
@@ -208,7 +239,19 @@ async def process_claim_stream(claim_id: str, claim_description: str) -> AsyncGe
         
         start_time = datetime.now()
         try:
-            inspection_result = await orch.execute_inspection_analysis(claim_description, claim_id)
+            # Run with keepalive to prevent timeout
+            task = asyncio.create_task(orch.execute_inspection_analysis(claim_description, claim_id))
+            while not task.done():
+                try:
+                    inspection_result = await asyncio.wait_for(asyncio.shield(task), timeout=8.0)
+                    break
+                except asyncio.TimeoutError:
+                    yield create_keepalive()
+                    print(f"💓 Keepalive sent for inspection agent")
+            
+            if task.done():
+                inspection_result = task.result()
+            
             processing_time = (datetime.now() - start_time).total_seconds()
             
             yield create_sse_message(StreamMessage(
@@ -250,7 +293,19 @@ async def process_claim_stream(claim_id: str, claim_description: str) -> AsyncGe
         
         start_time = datetime.now()
         try:
-            bill_result = await orch.execute_bill_reimbursement_analysis(claim_description, claim_id)
+            # Run with keepalive to prevent timeout
+            task = asyncio.create_task(orch.execute_bill_reimbursement_analysis(claim_description, claim_id))
+            while not task.done():
+                try:
+                    bill_result = await asyncio.wait_for(asyncio.shield(task), timeout=8.0)
+                    break
+                except asyncio.TimeoutError:
+                    yield create_keepalive()
+                    print(f"💓 Keepalive sent for bill agent")
+            
+            if task.done():
+                bill_result = task.result()
+            
             processing_time = (datetime.now() - start_time).total_seconds()
             
             yield create_sse_message(StreamMessage(
@@ -310,8 +365,19 @@ async def process_claim_stream(claim_id: str, claim_description: str) -> AsyncGe
             if "bill_synthesis" in all_memory:
                 claim_data.bill_analysis = all_memory["bill_synthesis"]["response_data"]
             
-            # Synthesize final recommendation
-            final_result = await orch.synthesize_final_recommendation(claim_data)
+            # Synthesize final recommendation with keepalive
+            task = asyncio.create_task(orch.synthesize_final_recommendation(claim_data))
+            while not task.done():
+                try:
+                    final_result = await asyncio.wait_for(asyncio.shield(task), timeout=8.0)
+                    break
+                except asyncio.TimeoutError:
+                    yield create_keepalive()
+                    print(f"💓 Keepalive sent for final decision agent")
+            
+            if task.done():
+                final_result = task.result()
+            
             processing_time = (datetime.now() - start_time).total_seconds()
             
             yield create_sse_message(StreamMessage(
