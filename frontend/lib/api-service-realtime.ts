@@ -201,3 +201,43 @@ export function calculateProgress(state: ClaimProcessingState): number {
 
   return Math.round((completedAgents / agentNames.length) * 100);
 }
+
+/**
+ * Check real-time API health (alias for checkApiHealth)
+ */
+export async function checkRealtimeApiHealth(): Promise<{
+  status: string;
+  timestamp: string;
+  orchestrator_initialized: boolean;
+}> {
+  return checkApiHealth();
+}
+
+/**
+ * Format agent status for display
+ */
+export function formatAgentStatus(status: string): string {
+  switch (status) {
+    case 'pending':
+      return 'Pending';
+    case 'processing':
+      return 'Processing...';
+    case 'completed':
+      return 'Completed';
+    case 'failed':
+      return 'Failed';
+    default:
+      return status;
+  }
+}
+
+/**
+ * Agent result interface for backward compatibility
+ */
+export interface AgentResult {
+  agent_name: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  response?: string;
+  error?: string;
+  processing_time_seconds?: number;
+}
