@@ -37,6 +37,10 @@ jobs:
           cp -r .next/static ./deploy/.next/static
           [ -d public ] && cp -r public ./deploy/public || echo "No public folder"
           cp server.js ./deploy/
+          # Remove package.json to prevent Azure from trying to rebuild
+          rm -f ./deploy/package.json
+          # Create marker to skip Oryx build
+          echo "SCM_DO_BUILD_DURING_DEPLOYMENT=false" > ./deploy/.env
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
