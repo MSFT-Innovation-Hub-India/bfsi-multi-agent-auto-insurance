@@ -28,6 +28,8 @@ jobs:
 
       - name: npm install and build
         working-directory: ./frontend
+        env:
+          NEXT_PUBLIC_API_URL: https://autoinsurance-dfhygshagqfgb6f2.eastus2-01.azurewebsites.net
         run: |
           npm install
           npm run build
