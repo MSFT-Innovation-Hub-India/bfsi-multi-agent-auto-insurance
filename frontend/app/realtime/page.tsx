@@ -94,7 +94,8 @@ export default function RealtimeClaimProcessor() {
   const checkHealth = async () => {
     try {
       const health = await checkRealtimeApiHealth();
-      setApiHealthy(health.orchestrator_initialized);
+      // Check if API is healthy (orchestrator is lazy-initialized on first request)
+      setApiHealthy(health.status === 'healthy');
     } catch (error) {
       setApiHealthy(false);
     }
