@@ -249,7 +249,8 @@ function parseAgentOutputs(
     extractPercentage(finalText, 98);
 
   // Parse claim info
-  const vehicleInfo = policyOutput?.extracted_data?.coverage_type || 'Vehicle';
+  const coverageType = policyOutput?.extracted_data?.coverage_type;
+  const vehicleInfo = typeof coverageType === 'string' ? coverageType : 'Vehicle';
   const policyNumber = policyOutput?.extracted_data?.policy_number || claimId || 'N/A';
 
   return {
