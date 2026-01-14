@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { 
   Activity, 
   CheckCircle, 
@@ -29,7 +29,7 @@ import {
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
-export default function AgentWorkflowPage() {
+function AgentWorkflowContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const claimId = searchParams.get('claimId');
@@ -974,5 +974,17 @@ export default function AgentWorkflowPage() {
         document.body
       )}
     </>
+  );
+}
+
+export default function AgentWorkflowPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+      </div>
+    }>
+      <AgentWorkflowContent />
+    </Suspense>
   );
 }
