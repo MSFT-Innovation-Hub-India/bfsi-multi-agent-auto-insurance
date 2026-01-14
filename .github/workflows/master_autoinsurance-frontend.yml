@@ -35,19 +35,23 @@ jobs:
       - name: Prepare standalone deployment
         working-directory: ./frontend
         run: |
-          mkdir -p ./deploy/.next
-          
           # Debug: show standalone structure first
           echo "=== Standalone folder structure ==="
           ls -la .next/standalone/
+          echo "=== Standalone .next folder ==="
           ls -la .next/standalone/.next/ || echo "No .next in standalone"
+          echo "=== BUILD_ID in standalone ==="
+          cat .next/standalone/.next/BUILD_ID || echo "No BUILD_ID"
           
-          # Copy the standalone build files
-          cp -r .next/standalone/* ./deploy/
-          # Copy hidden .next folder explicitly
-          cp -r .next/standalone/.next/* ./deploy/.next/
-          # Copy static files
-          cp -r .next/static ./deploy/.next/static
+          # Use tar to preserve all files including hidden ones
+          mkdir -p ./deploy
+          cd .next/standalone && tar cf - . | (cd ../../deploy && tar xf -)
+          cd ../..
+          
+          # Copy static files (these are NOT in standalone by default)
+          mkdir -p ./deploy/.next/static
+          cp -r .next/static/* ./deploy/.next/static/
+          
           # Copy public folder if it exists
           [ -d public ] && cp -r public ./deploy/public || echo "No public folder"
           
@@ -56,8 +60,10 @@ jobs:
           ls -la ./deploy/
           echo "=== Deploy .next folder contents ==="
           ls -la ./deploy/.next/
-          echo "=== Checking for BUILD_ID ==="
+          echo "=== Checking for BUILD_ID in deploy ==="
           cat ./deploy/.next/BUILD_ID || echo "No BUILD_ID found"
+          echo "=== Server folder ==="
+          ls -la ./deploy/.next/server/ || echo "No server folder"
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
