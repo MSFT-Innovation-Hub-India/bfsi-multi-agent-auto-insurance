@@ -31,20 +31,27 @@ AGENT_NAMES = {
     "FINAL_DECISION": "Final Decision Agent"
 }
 
-# Global orchestrator instance
+# Global orchestrator instance (lazy initialization)
 orchestrator: Optional[AutoInsuranceOrchestrator] = None
+orchestrator_lock = asyncio.Lock()
+
+async def get_orchestrator() -> AutoInsuranceOrchestrator:
+    """Lazy initialization of orchestrator - only initialize when first needed"""
+    global orchestrator
+    if orchestrator is None:
+        async with orchestrator_lock:
+            if orchestrator is None:  # Double-check after acquiring lock
+                print("🔄 Initializing orchestrator on first request...")
+                orchestrator = AutoInsuranceOrchestrator()
+                print("✅ Real-Time Orchestrator initialized successfully")
+    return orchestrator
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager for startup and shutdown events"""
     global orchestrator
-    # Startup
-    try:
-        orchestrator = AutoInsuranceOrchestrator()
-        print("✅ Real-Time Orchestrator initialized successfully")
-    except Exception as e:
-        print(f"❌ Failed to initialize orchestrator: {e}")
-        raise e
+    # Startup - just log, don't initialize orchestrator yet
+    print("🚀 App starting up - orchestrator will be initialized on first request")
     
     yield  # Application runs here
     
@@ -96,18 +103,8 @@ async def process_claim_stream(claim_id: str, claim_description: str) -> AsyncGe
     Stream claim processing results in real-time as each agent completes
     Uses Server-Sent Events (SSE) format
     """
-    if not orchestrator:
-        error_msg = StreamMessage(
-            type="error",
-            agent_name="system",
-            claim_id=claim_id,
-            timestamp=datetime.now().isoformat(),
-            data={"error": "Orchestrator not initialized"}
-        )
-        yield create_sse_message(error_msg)
-        return
-    
     try:
+        orch = await get_orchestrator()
         print(f"\n🚀 Real-Time API: Starting claim processing stream for {claim_id}")
         
         # ============================================================
@@ -136,7 +133,7 @@ async def process_claim_stream(claim_id: str, claim_description: str) -> AsyncGe
         async def run_policy_lookup():
             start_time = datetime.now()
             try:
-                result = await orchestrator.get_policy_basic_details(claim_id)
+                result = await orch.get_policy_basic_details(claim_id)
                 processing_time = (datetime.now() - start_time).total_seconds()
                 return (AGENT_NAMES["POLICY_INSIGHT"], "completed", result, processing_time, None)
             except Exception as e:
@@ -145,7 +142,7 @@ async def process_claim_stream(claim_id: str, claim_description: str) -> AsyncGe
         async def run_coverage_assessment():
             start_time = datetime.now()
             try:
-                result = await orchestrator.execute_policy_analysis(claim_description, claim_id)
+                result = await orch.execute_policy_analysis(claim_description, claim_id)
                 processing_time = (datetime.now() - start_time).total_seconds()
                 return (AGENT_NAMES["COVERAGE_ASSESSMENT"], "completed", result, processing_time, None)
             except Exception as e:
@@ -209,7 +206,7 @@ async def process_claim_stream(claim_id: str, claim_description: str) -> AsyncGe
         
         start_time = datetime.now()
         try:
-            inspection_result = await orchestrator.execute_inspection_analysis(claim_description, claim_id)
+            inspection_result = await orch.execute_inspection_analysis(claim_description, claim_id)
             processing_time = (datetime.now() - start_time).total_seconds()
             
             yield create_sse_message(StreamMessage(
@@ -251,7 +248,7 @@ async def process_claim_stream(claim_id: str, claim_description: str) -> AsyncGe
         
         start_time = datetime.now()
         try:
-            bill_result = await orchestrator.execute_bill_reimbursement_analysis(claim_description, claim_id)
+            bill_result = await orch.execute_bill_reimbursement_analysis(claim_description, claim_id)
             processing_time = (datetime.now() - start_time).total_seconds()
             
             yield create_sse_message(StreamMessage(
@@ -294,7 +291,7 @@ async def process_claim_stream(claim_id: str, claim_description: str) -> AsyncGe
         start_time = datetime.now()
         try:
             # Retrieve all agent data from memory to synthesize
-            all_memory = await orchestrator.memory_manager.retrieve_previous_responses(
+            all_memory = await orch.memory_manager.retrieve_previous_responses(
                 claim_id, 
                 ["policy", "inspection", "bill_synthesis"]
             )
@@ -309,7 +306,7 @@ async def process_claim_stream(claim_id: str, claim_description: str) -> AsyncGe
                 claim_data.bill_analysis = all_memory["bill_synthesis"]["response_data"]
             
             # Synthesize final recommendation
-            final_result = await orchestrator.synthesize_final_recommendation(claim_data)
+            final_result = await orch.synthesize_final_recommendation(claim_data)
             processing_time = (datetime.now() - start_time).total_seconds()
             
             yield create_sse_message(StreamMessage(
@@ -386,8 +383,7 @@ async def process_claim_batch(request: ClaimRequest):
     Returns all results at once after all agents complete
     Note: This is the same as the original api_server.py behavior
     """
-    if not orchestrator:
-        raise HTTPException(status_code=500, detail="Orchestrator not initialized")
+    orch = await get_orchestrator()
     
     from pydantic import BaseModel
     from typing import Optional
@@ -428,7 +424,7 @@ async def process_claim_batch(request: ClaimRequest):
         # Agent 1: Policy Basic Details
         try:
             policy_start = datetime.now()
-            basic_details = await orchestrator.get_policy_basic_details(request.claim_id)
+            basic_details = await orch.get_policy_basic_details(request.claim_id)
             policy_time = (datetime.now() - policy_start).total_seconds()
             response.policy_basic_details = AgentResponse(
                 agent_name="Policy Lookup Assistant",
@@ -448,7 +444,7 @@ async def process_claim_batch(request: ClaimRequest):
         # Agent 2: Policy Analysis
         try:
             policy_start = datetime.now()
-            policy_result = await orchestrator.execute_policy_analysis(request.claim_description, request.claim_id)
+            policy_result = await orch.execute_policy_analysis(request.claim_description, request.claim_id)
             policy_time = (datetime.now() - policy_start).total_seconds()
             response.policy_analysis = AgentResponse(
                 agent_name="Policy Coverage Assistant",
@@ -468,7 +464,7 @@ async def process_claim_batch(request: ClaimRequest):
         # Agent 3: Inspection Analysis
         try:
             inspection_start = datetime.now()
-            inspection_result = await orchestrator.execute_inspection_analysis(request.claim_description, request.claim_id)
+            inspection_result = await orch.execute_inspection_analysis(request.claim_description, request.claim_id)
             inspection_time = (datetime.now() - inspection_start).total_seconds()
             response.inspection_analysis = AgentResponse(
                 agent_name="Claims Evidence Evaluator",
@@ -488,7 +484,7 @@ async def process_claim_batch(request: ClaimRequest):
         # Agent 4: Bill Analysis
         try:
             bill_start = datetime.now()
-            bill_result = await orchestrator.execute_bill_reimbursement_analysis(request.claim_description, request.claim_id)
+            bill_result = await orch.execute_bill_reimbursement_analysis(request.claim_description, request.claim_id)
             bill_time = (datetime.now() - bill_start).total_seconds()
             response.bill_analysis = AgentResponse(
                 agent_name="Settlement Underwriter",
@@ -516,7 +512,7 @@ async def process_claim_batch(request: ClaimRequest):
             if response.bill_analysis:
                 claim_data.bill_analysis = response.bill_analysis.response
             
-            final_result = await orchestrator.synthesize_final_recommendation(claim_data)
+            final_result = await orch.synthesize_final_recommendation(claim_data)
             final_time = (datetime.now() - final_start).total_seconds()
             response.final_recommendation = AgentResponse(
                 agent_name="Decision Advisor",
@@ -632,11 +628,10 @@ async def get_sas_url(request: SasUrlRequest):
 async def get_claim_agent_outputs(claim_id: str):
     """Get all agent outputs for a specific claim from Cosmos DB"""
     try:
-        if not orchestrator or not orchestrator.memory_manager:
-            raise HTTPException(status_code=503, detail="Orchestrator or memory manager not initialized")
+        orch = await get_orchestrator()
         
         # Get all agent responses from Cosmos DB
-        agent_responses = await orchestrator.memory_manager.get_all_agent_responses(claim_id)
+        agent_responses = await orch.memory_manager.get_all_agent_responses(claim_id)
         
         # Format the responses for frontend
         outputs = []
