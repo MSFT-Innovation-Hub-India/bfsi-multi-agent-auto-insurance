@@ -40,7 +40,7 @@
   "scripts": {
   "dev": "next dev",
   "build": "next build",
-  "start": "next start -p $PORT",
+  "start": "node server.js",
   "lint": "next lint"
 },
   "devDependencies": {

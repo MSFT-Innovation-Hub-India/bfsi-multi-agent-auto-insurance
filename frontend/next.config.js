@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  output: 'standalone',
   reactStrictMode: true,
   env: {
     COSMOS_DB_ENDPOINT: process.env.COSMOS_DB_ENDPOINT,
