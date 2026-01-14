@@ -32,9 +32,10 @@ jobs:
       - name: Prepare standalone deployment
         working-directory: ./frontend
         run: |
+          mkdir -p ./deploy
           cp -r .next/standalone/. ./deploy/
           cp -r .next/static ./deploy/.next/static
-          cp -r public ./deploy/public
+          [ -d public ] && cp -r public ./deploy/public || echo "No public folder"
           cp server.js ./deploy/
 
       - name: Upload artifact for deployment job
