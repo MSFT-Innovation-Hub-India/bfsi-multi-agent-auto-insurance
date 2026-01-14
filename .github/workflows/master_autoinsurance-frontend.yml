@@ -35,18 +35,27 @@ jobs:
       - name: Prepare standalone deployment
         working-directory: ./frontend
         run: |
-          mkdir -p ./deploy
-          # Copy the standalone build (includes auto-generated server.js)
-          cp -r .next/standalone/. ./deploy/
+          mkdir -p ./deploy/.next
+          
+          # Debug: show standalone structure first
+          echo "=== Standalone folder structure ==="
+          ls -la .next/standalone/
+          ls -la .next/standalone/.next/ || echo "No .next in standalone"
+          
+          # Copy the standalone build files
+          cp -r .next/standalone/* ./deploy/
+          # Copy hidden .next folder explicitly
+          cp -r .next/standalone/.next/* ./deploy/.next/
           # Copy static files
           cp -r .next/static ./deploy/.next/static
           # Copy public folder if it exists
           [ -d public ] && cp -r public ./deploy/public || echo "No public folder"
+          
           # Debug: show what we're deploying
           echo "=== Deploy folder structure ==="
-          find ./deploy -type f -name "*.js" | head -20
-          echo "=== .next folder contents ==="
-          ls -la ./deploy/.next/ || echo "No .next folder"
+          ls -la ./deploy/
+          echo "=== Deploy .next folder contents ==="
+          ls -la ./deploy/.next/
           echo "=== Checking for BUILD_ID ==="
           cat ./deploy/.next/BUILD_ID || echo "No BUILD_ID found"
 
@@ -55,6 +64,7 @@ jobs:
         with:
           name: node-app
           path: ./frontend/deploy
+          include-hidden-files: true
 
   deploy:
     runs-on: ubuntu-latest
