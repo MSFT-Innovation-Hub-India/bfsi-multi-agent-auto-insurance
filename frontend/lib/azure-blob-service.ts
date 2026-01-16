@@ -117,7 +117,7 @@ export async function generateSasUrl(
  */
 export async function listClaimDocuments(claimId: string): Promise<ClaimDocument[]> {
   try {
-    // For now, fetch all documents from the container since they're not organized by claim_id
+    // Fetch all documents from the container (documents are organized by type folders, not claim_id)
     const response = await fetch(`${API_BASE_URL}/api/blob/list-all`);
     
     if (response.ok) {
@@ -126,10 +126,11 @@ export async function listClaimDocuments(claimId: string): Promise<ClaimDocument
       return documents.map((doc: any) => ({
         name: doc.name,
         url: doc.url || '#',
-        contentType: doc.contentType,
-        size: doc.size,
-        lastModified: new Date(doc.lastModified),
-        type: doc.type,
+        // Handle snake_case from backend (content_type, last_modified)
+        contentType: doc.content_type || doc.contentType || 'application/octet-stream',
+        size: doc.size || 0,
+        lastModified: new Date(doc.last_modified || doc.lastModified || Date.now()),
+        type: determineDocumentType(doc.name),
       }));
     }
     
