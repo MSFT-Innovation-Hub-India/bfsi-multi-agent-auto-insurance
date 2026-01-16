@@ -129,15 +129,15 @@ class BlobStorageService:
     def get_document_sas_url(
         self, 
         document_name: str, 
-        claim_id: str, 
+        claim_id: str = None, 
         expiry_hours: int = 24
     ) -> str:
         """
         Generate a SAS URL for accessing a document using User Delegation Key
         
         Args:
-            document_name: Name of the document
-            claim_id: The claim identifier
+            document_name: Name/path of the document (can be full path like 'bills/file.pdf')
+            claim_id: The claim identifier (optional, used only if document_name is not a full path)
             expiry_hours: Number of hours until the SAS URL expires (default: 24)
             
         Returns:
@@ -146,8 +146,14 @@ class BlobStorageService:
         from azure.storage.blob import generate_blob_sas, UserDelegationKey
         
         try:
-            # Construct the blob name (path in container)
-            blob_name = f"{claim_id}/{document_name}"
+            # If document_name already contains a path (has '/'), use it directly
+            # Otherwise, construct path with claim_id
+            if '/' in document_name:
+                blob_name = document_name
+            elif claim_id:
+                blob_name = f"{claim_id}/{document_name}"
+            else:
+                blob_name = document_name
             
             # Get user delegation key for SAS token generation with Managed Identity
             start_time = datetime.now(timezone.utc)
