@@ -177,10 +177,35 @@ function parseAgentOutputs(
       const idx = lower.indexOf(label.toLowerCase());
       if (idx >= 0) {
         const slice = text.slice(idx, idx + 160); // grab nearby
-        const m = /₹?\s*([\d][\d,]*)/.exec(slice);
+        // Match currency with ₹ symbol - handles both ₹50,200 and ₹ 50,200 formats
+        const m = /₹\s*([\d,]+)/.exec(slice);
         if (m) {
           const n = parseInt(m[1].replace(/,/g, ''), 10);
           if (!Number.isNaN(n) && n > 0) return n;
+        }
+      }
+    }
+    return undefined;
+  };
+
+  // Extract the final reimbursement amount from markdown tables or bold text
+  const extractFinalReimbursement = (text: string): number | undefined => {
+    // Look for patterns like "**₹50,200**" or "| **₹50,200** |" which indicate emphasized amounts
+    // Also look for "Final Reimbursement" or "Final Reimbursable Amount" followed by amount
+    const patterns = [
+      /final\s+reimburs(?:ement|able)\s+amount[:\s]*\*{0,2}₹\s*([\d,]+)/i,
+      /final\s+reimburs(?:ement|able)[:\s]*\*{0,2}₹\s*([\d,]+)/i,
+      /\*{2}final\s+reimburs(?:ement|able)\s+amount\*{2}[:\s]*\*{0,2}₹\s*([\d,]+)/i,
+      /\|\s*\*{2}final\s+reimburs(?:ement|able)\*{2}\s*\|\s*\*{0,2}₹\s*([\d,]+)/i,
+      /reimbursement[:\s]+\*{2}₹\s*([\d,]+)\*{2}/i,
+    ];
+    
+    for (const pattern of patterns) {
+      const match = text.match(pattern);
+      if (match) {
+        const n = parseInt(match[1].replace(/,/g, ''), 10);
+        if (!Number.isNaN(n) && n > 0 && n < 1000000) { // Sanity check: less than 10 lakh
+          return n;
         }
       }
     }
@@ -206,8 +231,12 @@ function parseAgentOutputs(
     positiveAmountOrUndefined(billJson.reimbursement_amount),
   );
 
+  // Try to extract the final reimbursement directly from the text
+  const directReimbursement = extractFinalReimbursement(finalText);
+
   const labeledAmount = amountAfterLabel(finalText, [
     'final reimbursement',
+    'final reimbursable amount',
     'total coverage amount',
     'approved amount',
     'reimbursement of',
@@ -219,22 +248,19 @@ function parseAgentOutputs(
     ['approved', 'reimbursement', 'payable', 'final']
   );
 
-  const fallbackCurrency = maxCurrencyAmount(
-    [
-      finalText,
-      getText(billOutput),
-    ],
-    extractAmount(finalText, 51000)
-  );
+  // Don't use maxCurrencyAmount as fallback - it picks up IDV and other large values
+  // Instead, use a more conservative approach
+  const fallbackCurrency = extractAmount(finalText, 51000);
 
   const reimbursementAmountRaw = firstDefined(
     structuredReimbursement,
+    directReimbursement,  // Prioritize direct extraction from text
     labeledAmount,
     keywordAmount,
-    fallbackCurrency
   );
 
-  const reimbursementAmount = reimbursementAmountRaw && reimbursementAmountRaw > 0
+  // Validate the amount - should be reasonable (not IDV or other large values)
+  const reimbursementAmount = reimbursementAmountRaw && reimbursementAmountRaw > 0 && reimbursementAmountRaw < 500000
     ? reimbursementAmountRaw
     : fallbackCurrency;
 
