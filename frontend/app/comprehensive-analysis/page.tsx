@@ -275,10 +275,12 @@ function parseAgentOutputs(
   // Use a sensible fallback amount
   const fallbackCurrency = 50000; // Default fallback if nothing matches
 
+  // IMPORTANT: directReimbursement should come FIRST because it extracts from the actual text
+  // structuredReimbursement often has bad/concatenated data from extracted_data fields
   const reimbursementAmountRaw = firstDefined(
-    structuredReimbursement,
-    directReimbursement,  // Prioritize direct extraction from text
-    // labeledAmount is disabled - it picks wrong values
+    directReimbursement,  // Prioritize direct extraction from text - this is most reliable!
+    // Only use structuredReimbursement if it's in a reasonable range
+    (structuredReimbursement && structuredReimbursement >= 40000 && structuredReimbursement <= 100000) ? structuredReimbursement : undefined,
   );
 
   // Log for debugging
