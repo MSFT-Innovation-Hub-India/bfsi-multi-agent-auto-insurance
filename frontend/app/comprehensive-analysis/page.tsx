@@ -190,21 +190,28 @@ function parseAgentOutputs(
 
   // Extract the final reimbursement amount from markdown tables or bold text
   const extractFinalReimbursement = (text: string): number | undefined => {
-    // Look for patterns like "**₹50,200**" or "| **₹50,200** |" which indicate emphasized amounts
-    // Also look for "Final Reimbursement" or "Final Reimbursable Amount" followed by amount
+    // Look for specific patterns that indicate the final reimbursement amount
     const patterns = [
+      // "**Final Reimbursement Amount**: ₹50,250" or "Final Reimbursement Amount: ₹50,250"
       /final\s+reimburs(?:ement|able)\s+amount[:\s]*\*{0,2}₹\s*([\d,]+)/i,
-      /final\s+reimburs(?:ement|able)[:\s]*\*{0,2}₹\s*([\d,]+)/i,
-      /\*{2}final\s+reimburs(?:ement|able)\s+amount\*{2}[:\s]*\*{0,2}₹\s*([\d,]+)/i,
-      /\|\s*\*{2}final\s+reimburs(?:ement|able)\*{2}\s*\|\s*\*{0,2}₹\s*([\d,]+)/i,
-      /reimbursement[:\s]+\*{2}₹\s*([\d,]+)\*{2}/i,
+      // "Net Reimbursement | ₹50,250" in tables
+      /net\s+reimburs(?:ement|able)[^₹]*₹\s*([\d,]+)/i,
+      // "**Net Reimbursement** | **₹50,250**"
+      /\*{2}net\s+reimburs(?:ement|able)\*{2}[^₹]*\*{0,2}₹\s*([\d,]+)/i,
+      // "final reimbursement of ₹50,250" or "approved for ₹50,250"
+      /(?:final\s+reimbursement|approved\s+for)\s+(?:of\s+)?₹\s*([\d,]+)/i,
+      // "reimbursement amount of ₹50,250"
+      /reimbursement\s+amount\s+(?:of\s+)?₹\s*([\d,]+)/i,
+      // Table row: "| **₹50,250** |" after "Net Reimbursement" or "Final"
+      /(?:net|final)[^|]*\|[^|]*\*{0,2}₹\s*([\d,]+)\*{0,2}\s*\|/i,
     ];
     
     for (const pattern of patterns) {
       const match = text.match(pattern);
       if (match) {
         const n = parseInt(match[1].replace(/,/g, ''), 10);
-        if (!Number.isNaN(n) && n > 0 && n < 1000000) { // Sanity check: less than 10 lakh
+        // Sanity check: typical claim reimbursements are between 1000 and 200000
+        if (!Number.isNaN(n) && n >= 1000 && n < 200000) {
           return n;
         }
       }
@@ -243,10 +250,8 @@ function parseAgentOutputs(
     'coverage amount',
   ]);
 
-  const keywordAmount = amountNearKeywords(
-    [finalText, getText(billOutput)],
-    ['approved', 'reimbursement', 'payable', 'final']
-  );
+  // Don't use keywordAmount - it picks up maximum values which includes IDV
+  // const keywordAmount = amountNearKeywords(...)
 
   // Don't use maxCurrencyAmount as fallback - it picks up IDV and other large values
   // Instead, use a more conservative approach
@@ -256,11 +261,12 @@ function parseAgentOutputs(
     structuredReimbursement,
     directReimbursement,  // Prioritize direct extraction from text
     labeledAmount,
-    keywordAmount,
+    // Don't use keywordAmount - it causes issues by picking max values
   );
 
   // Validate the amount - should be reasonable (not IDV or other large values)
-  const reimbursementAmount = reimbursementAmountRaw && reimbursementAmountRaw > 0 && reimbursementAmountRaw < 500000
+  // Typical claim reimbursements are between 1000 and 200000
+  const reimbursementAmount = reimbursementAmountRaw && reimbursementAmountRaw >= 1000 && reimbursementAmountRaw < 200000
     ? reimbursementAmountRaw
     : fallbackCurrency;
 
