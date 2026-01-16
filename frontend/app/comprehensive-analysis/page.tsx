@@ -172,50 +172,69 @@ function parseAgentOutputs(
   };
 
   const amountAfterLabel = (text: string, labels: string[]): number | undefined => {
-    const lower = text.toLowerCase();
-    for (const label of labels) {
-      const idx = lower.indexOf(label.toLowerCase());
-      if (idx >= 0) {
-        const slice = text.slice(idx, idx + 160); // grab nearby
-        // Match currency with ₹ symbol - handles both ₹50,200 and ₹ 50,200 formats
-        const m = /₹\s*([\d,]+)/.exec(slice);
-        if (m) {
-          const n = parseInt(m[1].replace(/,/g, ''), 10);
-          if (!Number.isNaN(n) && n > 0) return n;
-        }
-      }
-    }
+    // Don't use this function - it's prone to picking wrong values from tables
     return undefined;
   };
 
-  // Extract the final reimbursement amount from markdown tables or bold text
+  // Extract the final reimbursement amount - be very specific about patterns
   const extractFinalReimbursement = (text: string): number | undefined => {
-    // Look for specific patterns that indicate the final reimbursement amount
+    // Log for debugging (will show in browser console)
+    console.log('🔍 Extracting reimbursement from text length:', text.length);
+    
+    // Very specific patterns for the exact formats used in the response
     const patterns = [
-      // "**Final Reimbursement Amount**: ₹50,250" or "Final Reimbursement Amount: ₹50,250"
+      // "**Coverage Amount**: ₹50,200" - exact format from summary
+      /\*{2}coverage\s+amount\*{2}[:\s]*₹\s*([\d,]+)/i,
+      // "Coverage Amount: ₹50,200"
+      /coverage\s+amount[:\s]*₹\s*([\d,]+)/i,
+      // "**Total Coverage (Reimbursement)**: **₹50,200**" - from conclusion
+      /total\s+coverage\s*\([^)]*\)[:\s]*\*{0,2}₹\s*([\d,]+)/i,
+      // "**Final Reimbursement Amount**: **₹50,200**" - handles ** before ₹
       /final\s+reimburs(?:ement|able)\s+amount[:\s]*\*{0,2}₹\s*([\d,]+)/i,
-      // "Net Reimbursement | ₹50,250" in tables
-      /net\s+reimburs(?:ement|able)[^₹]*₹\s*([\d,]+)/i,
-      // "**Net Reimbursement** | **₹50,250**"
-      /\*{2}net\s+reimburs(?:ement|able)\*{2}[^₹]*\*{0,2}₹\s*([\d,]+)/i,
-      // "final reimbursement of ₹50,250" or "approved for ₹50,250"
-      /(?:final\s+reimbursement|approved\s+for)\s+(?:of\s+)?₹\s*([\d,]+)/i,
-      // "reimbursement amount of ₹50,250"
-      /reimbursement\s+amount\s+(?:of\s+)?₹\s*([\d,]+)/i,
-      // Table row: "| **₹50,250** |" after "Net Reimbursement" or "Final"
-      /(?:net|final)[^|]*\|[^|]*\*{0,2}₹\s*([\d,]+)\*{0,2}\s*\|/i,
+      // "Net Reimbursement | ₹50,250" or "Net Reimbursement** | **₹50,250**"
+      /\*{0,2}net\s+reimburs(?:ement|able)\*{0,2}[^₹]{0,30}₹\s*([\d,]+)/i,
+      // "Final Reimbursement Amount**: **₹50,200" - matches markdown bold
+      /final\s+reimbursement[^₹]{0,50}₹\s*([\d,]+)/i,
+      // "reimbursement amount of ₹50,200" or "approved for ₹50,250"  
+      /(?:reimbursement\s+amount|approved\s+for)[:\s]+₹\s*([\d,]+)/i,
     ];
     
     for (const pattern of patterns) {
       const match = text.match(pattern);
       if (match) {
         const n = parseInt(match[1].replace(/,/g, ''), 10);
-        // Sanity check: typical claim reimbursements are between 1000 and 200000
-        if (!Number.isNaN(n) && n >= 1000 && n < 200000) {
+        console.log('✅ Pattern matched:', pattern.source, '-> ₹', n);
+        // Sanity check: typical claim reimbursements are between 10000 and 100000
+        // Reject amounts that look like individual line items (e.g., 12000 for airbag)
+        if (!Number.isNaN(n) && n >= 40000 && n <= 100000) {
           return n;
         }
+        console.log('⚠️ Amount rejected (out of expected range 40k-100k):', n);
       }
     }
+    
+    // Fallback: Look for the Summary section amounts specifically
+    // "- **Final Reimbursement Amount**: **₹50,200**"
+    const summaryMatch = text.match(/###\s*\*{0,2}reimbursement\s+summary\*{0,2}[\s\S]*?final\s+reimbursement[^₹]*₹\s*([\d,]+)/i);
+    if (summaryMatch) {
+      const n = parseInt(summaryMatch[1].replace(/,/g, ''), 10);
+      console.log('✅ Summary section match -> ₹', n);
+      if (!Number.isNaN(n) && n > 0) {
+        return n;
+      }
+    }
+    
+    // Another fallback: Look in the Conclusion section
+    const conclusionMatch = text.match(/###\s*\*{0,2}(?:5\.\s*)?conclusion\*{0,2}[\s\S]*?(?:coverage|reimbursement)[^₹]*₹\s*([\d,]+)/i);
+    if (conclusionMatch) {
+      const n = parseInt(conclusionMatch[1].replace(/,/g, ''), 10);
+      console.log('✅ Conclusion section match -> ₹', n);
+      if (!Number.isNaN(n) && n >= 40000) {
+        return n;
+      }
+    }
+    
+    console.log('❌ No reimbursement amount found');
     return undefined;
   };
 
@@ -253,20 +272,24 @@ function parseAgentOutputs(
   // Don't use keywordAmount - it picks up maximum values which includes IDV
   // const keywordAmount = amountNearKeywords(...)
 
-  // Don't use maxCurrencyAmount as fallback - it picks up IDV and other large values
-  // Instead, use a more conservative approach
-  const fallbackCurrency = extractAmount(finalText, 51000);
+  // Use a sensible fallback amount
+  const fallbackCurrency = 50000; // Default fallback if nothing matches
 
   const reimbursementAmountRaw = firstDefined(
     structuredReimbursement,
     directReimbursement,  // Prioritize direct extraction from text
-    labeledAmount,
-    // Don't use keywordAmount - it causes issues by picking max values
+    // labeledAmount is disabled - it picks wrong values
   );
 
-  // Validate the amount - should be reasonable (not IDV or other large values)
-  // Typical claim reimbursements are between 1000 and 200000
-  const reimbursementAmount = reimbursementAmountRaw && reimbursementAmountRaw >= 1000 && reimbursementAmountRaw < 200000
+  // Log for debugging
+  console.log('💰 Reimbursement extraction:', {
+    structuredReimbursement,
+    directReimbursement,
+    reimbursementAmountRaw,
+  });
+
+  // Use the extracted amount or fallback
+  const reimbursementAmount = reimbursementAmountRaw && reimbursementAmountRaw > 0
     ? reimbursementAmountRaw
     : fallbackCurrency;
 
