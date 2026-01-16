@@ -7,7 +7,7 @@ Supports both Key-based and Managed Identity authentication
 import os
 from typing import Dict, Any, Optional, List
 from azure.cosmos import CosmosClient, PartitionKey
-from azure.identity import DefaultAzureCredential
+from azure.identity import ManagedIdentityCredential, AzureCliCredential
 from datetime import datetime
 
 
@@ -15,11 +15,11 @@ class CosmosMemoryManager:
     """
     Manages persistent memory storage for agent responses using Azure Cosmos DB.
     Stores each agent's analysis results and allows retrieval by subsequent agents.
-    Supports Key-based auth (preferred) or Managed Identity fallback.
+    Supports Managed Identity (production) or Azure CLI (local development).
     """
     
     def __init__(self, cosmos_endpoint: str = None):
-        """Initialize Cosmos DB client with Key or Managed Identity"""
+        """Initialize Cosmos DB client with Managed Identity or Azure CLI credential"""
         try:
             # Get Cosmos DB configuration from environment variables
             self.cosmos_endpoint = cosmos_endpoint or os.getenv("COSMOS_DB_ENDPOINT")
@@ -31,31 +31,49 @@ class CosmosMemoryManager:
                 self.container = None
                 return
             
-            # Try Key-based authentication first, then fall back to Managed Identity
-            if self.cosmos_key:
-                # Use Key-based authentication
-                self.client = CosmosClient(self.cosmos_endpoint, credential=self.cosmos_key)
-                auth_method = "Key-based"
-            else:
-                # Fall back to Managed Identity
-                print("ℹ️ COSMOS_DB_KEY not found, trying Managed Identity...")
-                credential = DefaultAzureCredential()
-                self.client = CosmosClient(self.cosmos_endpoint, credential=credential)
-                auth_method = "Managed Identity"
-            
             # Database and container configuration
             self.database_name = os.getenv("COSMOS_DB_DATABASE_NAME", "insurance")
             self.container_name = os.getenv("COSMOS_DB_CONTAINER_NAME", "data")
             
-            # Create database if it doesn't exist
-            self.database = self.client.create_database_if_not_exists(id=self.database_name)
-            
-            # Create container if it doesn't exist (partition key is claim_id)
-            self.container = self.database.create_container_if_not_exists(
-                id=self.container_name,
-                partition_key=PartitionKey(path="/claim_id"),
-                offer_throughput=400
-            )
+            # Choose credential based on environment
+            auth_method = None
+            try:
+                print("🔐 Trying Azure authentication...")
+                # Check if running in Azure (has WEBSITE_INSTANCE_ID env var)
+                if os.getenv("WEBSITE_INSTANCE_ID"):
+                    # In Azure - use ManagedIdentity
+                    print("   (Running in Azure - using Managed Identity)")
+                    credential = ManagedIdentityCredential()
+                else:
+                    # Local - use AzureCLI (faster)
+                    print("   (Running locally - using Azure CLI)")
+                    credential = AzureCliCredential()
+                
+                self.client = CosmosClient(self.cosmos_endpoint, credential=credential)
+                # Test the connection by getting database
+                self.database = self.client.get_database_client(self.database_name)
+                self.container = self.database.get_container_client(self.container_name)
+                # Verify access by reading container properties
+                self.container.read()
+                auth_method = "Entra ID (Managed Identity / CLI)"
+                print(f"[OK] Cosmos DB connected with {auth_method}")
+            except Exception as mi_error:
+                print(f"⚠️ Entra ID auth failed: {mi_error}")
+                # Fall back to Key-based auth if available
+                if self.cosmos_key:
+                    try:
+                        print("🔑 Trying Key-based authentication...")
+                        self.client = CosmosClient(self.cosmos_endpoint, credential=self.cosmos_key)
+                        self.database = self.client.get_database_client(self.database_name)
+                        self.container = self.database.get_container_client(self.container_name)
+                        self.container.read()
+                        auth_method = "Key-based"
+                        print(f"[OK] Cosmos DB connected with Key-based auth")
+                    except Exception as key_error:
+                        print(f"❌ Key-based auth also failed: {key_error}")
+                        raise key_error
+                else:
+                    raise mi_error
             
             print(f"[OK] Cosmos DB Memory Manager initialized with {auth_method}")
             print(f"     Database: {self.database_name}, Container: {self.container_name}")
