@@ -214,10 +214,6 @@ vehicleinsurance-claimsprocessing/
 4. Push to branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
-## 📝 License
-
-This project is licensed under the MIT License.
-
 ## 🆘 Support
 
 For issues and questions:
@@ -237,6 +233,3 @@ For issues and questions:
 - **Frontend**: Next.js 15, TypeScript, Tailwind CSS, shadcn/ui
 - **Azure Services**: OpenAI, Cosmos DB, Blob Storage, AI Search
 
-## 📄 License
-
-MIT License - see [LICENSE](LICENSE) for details
