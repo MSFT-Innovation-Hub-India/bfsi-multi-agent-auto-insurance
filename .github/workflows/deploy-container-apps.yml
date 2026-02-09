@@ -1,0 +1,112 @@
+# ============================================================
+# GitHub Actions Workflow for Azure Container Apps
+# Vehicle Insurance Claims Processing API
+# ============================================================
+#
+# 🎯 WHAT THIS DOES:
+#    Automatically builds and deploys your app to Azure Container Apps
+#    whenever you push changes to the master branch
+#
+# 📋 SETUP INSTRUCTIONS:
+#
+# 1. First, run the deploy-container-apps.ps1 script manually (one time)
+#    This creates all the Azure resources needed
+#
+# 2. In Azure Portal, create a Service Principal:
+#    az ad sp create-for-rbac --name "vehicle-claims-github" --role contributor \
+#      --scopes /subscriptions/{subscription-id}/resourceGroups/{resource-group} \
+#      --sdk-auth
+#
+# 3. In your GitHub repository, go to:
+#    Settings > Secrets and variables > Actions > New repository secret
+#
+# 4. Add these secrets:
+#    - AZURE_CREDENTIALS: The full JSON output from step 2
+#    - ACR_NAME: Your container registry name (e.g., vehicleclaimsacr1234)
+#    - RESOURCE_GROUP: Your resource group name (e.g., vehicle-claims-rg)
+#
+# ============================================================
+
+name: Deploy to Azure Container Apps
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - "**/*.py"
+      - "requirements.txt"
+      - "Dockerfile"
+      - ".github/workflows/deploy-container-apps.yml"
+  
+  # Allows you to run this workflow manually from GitHub Actions tab
+  workflow_dispatch:
+
+env:
+  APP_NAME: vehicle-claims-api
+  RESOURCE_GROUP: ${{ secrets.RESOURCE_GROUP }}
+  ACR_NAME: ${{ secrets.ACR_NAME }}
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      # Step 1: Get the code
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      # Step 2: Login to Azure
+      - name: 🔐 Login to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      # Step 3: Login to Azure Container Registry
+      - name: 🔐 Login to Container Registry
+        run: |
+          az acr login --name ${{ env.ACR_NAME }}
+
+      # Step 4: Build and push Docker image
+      - name: 🏗️ Build and push image
+        run: |
+          # Create a unique tag using the commit SHA
+          IMAGE_TAG="${{ github.sha }}"
+          ACR_SERVER="${{ env.ACR_NAME }}.azurecr.io"
+          
+          # Build using ACR (faster than local build + push)
+          az acr build \
+            --registry ${{ env.ACR_NAME }} \
+            --image ${{ env.APP_NAME }}:${IMAGE_TAG} \
+            --image ${{ env.APP_NAME }}:latest \
+            .
+
+      # Step 5: Deploy to Container Apps
+      - name: 🚀 Deploy to Container Apps
+        run: |
+          IMAGE_TAG="${{ github.sha }}"
+          ACR_SERVER="${{ env.ACR_NAME }}.azurecr.io"
+          
+          az containerapp update \
+            --name ${{ env.APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --image ${ACR_SERVER}/${{ env.APP_NAME }}:${IMAGE_TAG}
+
+      # Step 6: Show the deployed URL
+      - name: 📋 Show deployment info
+        run: |
+          APP_URL=$(az containerapp show \
+            --name ${{ env.APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --query properties.configuration.ingress.fqdn \
+            -o tsv)
+          
+          echo "============================================"
+          echo "✅ Deployment complete!"
+          echo "============================================"
+          echo ""
+          echo "🌐 App URL: https://${APP_URL}"
+          echo "📚 API Docs: https://${APP_URL}/docs"
+          echo "❤️ Health: https://${APP_URL}/health"
+          echo ""
+          echo "Deployed commit: ${{ github.sha }}"

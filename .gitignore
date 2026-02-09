@@ -92,7 +92,6 @@ credentials/
 
 # Archived files
 .archive/
-*.yml
 DEPLOYMENT.md
 DEPLOYMENT-GUIDE.md
 DEPLOYMENT-CONTAINER-APPS.md

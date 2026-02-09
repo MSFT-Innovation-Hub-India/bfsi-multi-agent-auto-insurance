@@ -1,0 +1,131 @@
+# Docs for the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
+# More GitHub Actions for Azure: https://github.com/Azure/actions
+
+name: Build and deploy Node.js app to Azure Web App - autoinsurance-frontend
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - "frontend/**"
+      - ".github/workflows/master_autoinsurance-frontend.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read #This is required for actions/checkout
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js version
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20.x'
+
+      - name: npm install and build
+        working-directory: ./frontend
+        env:
+          NEXT_PUBLIC_API_URL: https://autoinsurance-dfhygshagqfgb6f2.eastus2-01.azurewebsites.net
+        run: |
+          npm install
+          npm run build
+
+      - name: Prepare standalone deployment
+        working-directory: ./frontend
+        run: |
+          # Debug: show standalone structure first
+          echo "=== Standalone folder structure ==="
+          ls -la .next/standalone/
+          echo "=== Standalone .next folder ==="
+          ls -la .next/standalone/.next/ || echo "No .next in standalone"
+          echo "=== BUILD_ID in standalone ==="
+          cat .next/standalone/.next/BUILD_ID || echo "No BUILD_ID"
+          
+          # Use tar to preserve all files including hidden ones
+          mkdir -p ./deploy
+          cd .next/standalone && tar cf - . | (cd ../../deploy && tar xf -)
+          cd ../..
+          
+          # Copy static files (these are NOT in standalone by default)
+          mkdir -p ./deploy/.next/static
+          cp -r .next/static/* ./deploy/.next/static/
+          
+          # Copy public folder if it exists
+          [ -d public ] && cp -r public ./deploy/public || echo "No public folder"
+          
+          # Debug: show what we're deploying
+          echo "=== Deploy folder structure ==="
+          ls -la ./deploy/
+          echo "=== Deploy .next folder contents ==="
+          ls -la ./deploy/.next/
+          echo "=== Checking for BUILD_ID in deploy ==="
+          cat ./deploy/.next/BUILD_ID || echo "No BUILD_ID found"
+          echo "=== Server folder ==="
+          ls -la ./deploy/.next/server/ || echo "No server folder"
+
+      - name: Upload artifact for deployment job
+        uses: actions/upload-artifact@v4
+        with:
+          name: node-app
+          path: ./frontend/deploy
+          include-hidden-files: true
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      id-token: write #This is required for requesting the JWT
+      contents: read #This is required for actions/checkout
+
+    steps:
+      - name: Download artifact from build job
+        uses: actions/download-artifact@v4
+        with:
+          name: node-app
+      
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_16A20DDC16F4422FB7DA09ABD7B63AE5 }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_33AA51297C9F4C8387D8AC0B251B9027 }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_6D566104E80E47E396902C0E515A5C9A }}
+
+      - name: Disable Oryx build and set startup command
+        run: |
+          RG=$(az webapp list --query "[?name=='autoinsurance-frontend'].resourceGroup" -o tsv)
+          echo "Resource Group: $RG"
+          
+          # Disable Oryx build completely
+          az webapp config appsettings set --name autoinsurance-frontend --resource-group "$RG" --settings \
+            SCM_DO_BUILD_DURING_DEPLOYMENT=false \
+            WEBSITE_RUN_FROM_PACKAGE=0
+          
+          # Set startup command
+          az webapp config set --name autoinsurance-frontend --resource-group "$RG" --startup-file "node server.js"
+
+      - name: Create ZIP and deploy
+        run: |
+          # Debug: show what we're deploying
+          echo "=== Current directory contents ==="
+          ls -la
+          echo "=== .next folder contents ==="
+          ls -la .next/ || echo "No .next folder"
+          
+          # Create ZIP file
+          zip -r deploy.zip .
+          
+          # Get resource group using list command
+          RG=$(az webapp list --query "[?name=='autoinsurance-frontend'].resourceGroup" -o tsv)
+          echo "Resource Group: $RG"
+          
+          # Deploy with clean flag
+          az webapp deploy --name autoinsurance-frontend --resource-group "$RG" --src-path deploy.zip --type zip --clean true
+          
+          # Restart app to ensure new settings take effect
+          az webapp restart --name autoinsurance-frontend --resource-group "$RG"
+
+          
