@@ -92,3 +92,12 @@ credentials/
 
 # Archived files
 .archive/
+*.yml
+DEPLOYMENT.md
+DEPLOYMENT-GUIDE.md
+scripts/
+startup-batch.sh
+api_server.py
+*logs/
+*logs-test/
+azure-config-template.txt

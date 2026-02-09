@@ -2,6 +2,7 @@
 Cosmos DB Memory Manager
 Handles persistent storage and retrieval of agent responses
 Supports both Key-based and Managed Identity authentication
+Falls back to in-memory storage when Cosmos DB is unavailable (e.g., network disabled)
 """
 
 import os
@@ -11,15 +12,81 @@ from azure.identity import ManagedIdentityCredential, AzureCliCredential
 from datetime import datetime
 
 
+class InMemoryStorage:
+    """
+    Simple in-memory storage fallback when Cosmos DB is unavailable.
+    Data persists only during the application session.
+    """
+    
+    def __init__(self):
+        self._storage: Dict[str, List[Dict[str, Any]]] = {}
+        print("[INFO] In-memory storage initialized (Cosmos DB unavailable)")
+    
+    def store(self, claim_id: str, agent_type: str, response_data: str, extracted_data: Dict[str, Any] = None) -> bool:
+        if claim_id not in self._storage:
+            self._storage[claim_id] = []
+        
+        document = {
+            "id": f"{claim_id}_{agent_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+            "claim_id": claim_id,
+            "agent_type": agent_type,
+            "response_data": response_data,
+            "extracted_data": extracted_data or {},
+            "timestamp": datetime.now().isoformat(),
+            "status": "completed"
+        }
+        self._storage[claim_id].append(document)
+        print(f"[MEMORY] Stored {agent_type} response for claim {claim_id} (in-memory)")
+        return True
+    
+    def retrieve(self, claim_id: str, agent_types: List[str] = None) -> Dict[str, Any]:
+        if claim_id not in self._storage:
+            return {}
+        
+        responses = {}
+        for item in self._storage[claim_id]:
+            agent_type = item["agent_type"]
+            if agent_types is None or agent_type in agent_types:
+                responses[agent_type] = {
+                    "response_data": item["response_data"],
+                    "extracted_data": item.get("extracted_data", {}),
+                    "timestamp": item["timestamp"]
+                }
+        return responses
+    
+    def get_latest(self, claim_id: str, agent_type: str) -> Dict[str, Any]:
+        if claim_id not in self._storage:
+            return {}
+        
+        matching = [item for item in self._storage[claim_id] if item["agent_type"] == agent_type]
+        if matching:
+            latest = max(matching, key=lambda x: x["timestamp"])
+            return {
+                "response_data": latest["response_data"],
+                "extracted_data": latest.get("extracted_data", {}),
+                "timestamp": latest["timestamp"]
+            }
+        return {}
+    
+    def get_all(self, claim_id: str) -> List[Dict[str, Any]]:
+        if claim_id not in self._storage:
+            return []
+        return self._storage[claim_id]
+
+
 class CosmosMemoryManager:
     """
     Manages persistent memory storage for agent responses using Azure Cosmos DB.
     Stores each agent's analysis results and allows retrieval by subsequent agents.
     Supports Managed Identity (production) or Azure CLI (local development).
+    Falls back to in-memory storage when Cosmos DB is unavailable.
     """
     
     def __init__(self, cosmos_endpoint: str = None):
         """Initialize Cosmos DB client with Managed Identity or Azure CLI credential"""
+        self._in_memory = InMemoryStorage()  # Always create fallback
+        self._use_cosmos = False  # Track if Cosmos is available
+        
         try:
             # Get Cosmos DB configuration from environment variables
             self.cosmos_endpoint = cosmos_endpoint or os.getenv("COSMOS_DB_ENDPOINT")
@@ -77,11 +144,14 @@ class CosmosMemoryManager:
             
             print(f"[OK] Cosmos DB Memory Manager initialized with {auth_method}")
             print(f"     Database: {self.database_name}, Container: {self.container_name}")
+            self._use_cosmos = True
             
         except Exception as e:
-            print(f"[ERROR] Error initializing Cosmos DB: {e}")
+            print(f"[WARNING] Cosmos DB unavailable: {e}")
+            print(f"[INFO] Using in-memory storage as fallback (data will not persist)")
             self.client = None
             self.container = None
+            self._use_cosmos = False
     
     async def store_agent_response(
         self, 
@@ -90,10 +160,12 @@ class CosmosMemoryManager:
         response_data: str, 
         extracted_data: Dict[str, Any] = None
     ) -> bool:
-        """Store agent response in Cosmos DB"""
-        if not self.container:
-            print("[WARNING] Cosmos DB not available - storing in memory only")
-            return False
+        """Store agent response in Cosmos DB or in-memory fallback"""
+        # Always store in memory as backup
+        self._in_memory.store(claim_id, agent_type, response_data, extracted_data)
+        
+        if not self._use_cosmos or not self.container:
+            return True  # In-memory storage succeeded
         
         try:
             document = {
@@ -111,8 +183,8 @@ class CosmosMemoryManager:
             return True
             
         except Exception as e:
-            print(f"[ERROR] Error storing agent response in Cosmos DB: {e}")
-            return False
+            print(f"[WARNING] Cosmos DB store failed, using in-memory: {e}")
+            return True  # In-memory already stored above
     
     async def retrieve_previous_responses(
         self, 
@@ -120,9 +192,8 @@ class CosmosMemoryManager:
         agent_types: List[str] = None
     ) -> Dict[str, Any]:
         """Retrieve previous agent responses for a claim"""
-        if not self.container:
-            print("[WARNING] Cosmos DB not available - no memory retrieval")
-            return {}
+        if not self._use_cosmos or not self.container:
+            return self._in_memory.retrieve(claim_id, agent_types)
         
         try:
             query = "SELECT * FROM c WHERE c.claim_id = @claim_id"
@@ -155,13 +226,13 @@ class CosmosMemoryManager:
             return responses
             
         except Exception as e:
-            print(f"[ERROR] Error retrieving previous responses: {e}")
-            return {}
+            print(f"[WARNING] Cosmos DB retrieve failed, using in-memory: {e}")
+            return self._in_memory.retrieve(claim_id, agent_types)
     
     async def get_latest_response(self, claim_id: str, agent_type: str) -> Dict[str, Any]:
         """Get the latest response from a specific agent for a claim"""
-        if not self.container:
-            return {}
+        if not self._use_cosmos or not self.container:
+            return self._in_memory.get_latest(claim_id, agent_type)
         
         try:
             query = """
@@ -188,13 +259,13 @@ class CosmosMemoryManager:
             return {}
             
         except Exception as e:
-            print(f"[ERROR] Error retrieving latest response: {e}")
-            return {}
+            print(f"[WARNING] Cosmos DB get_latest failed, using in-memory: {e}")
+            return self._in_memory.get_latest(claim_id, agent_type)
     
     async def get_all_agent_responses(self, claim_id: str) -> List[Dict[str, Any]]:
         """Get all agent responses for a specific claim"""
-        if not self.container:
-            return []
+        if not self._use_cosmos or not self.container:
+            return self._in_memory.get_all(claim_id)
         
         try:
             query = """
@@ -213,5 +284,5 @@ class CosmosMemoryManager:
             return items
             
         except Exception as e:
-            print(f"[ERROR] Error retrieving all agent responses: {e}")
-            return []
+            print(f"[WARNING] Cosmos DB get_all failed, using in-memory: {e}")
+            return self._in_memory.get_all(claim_id)

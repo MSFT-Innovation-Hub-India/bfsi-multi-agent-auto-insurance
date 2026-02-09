@@ -1,0 +1,50 @@
+# Docker ignore file
+# Prevents these files from being included in the Docker image
+
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+antenv/
+.env
+.venv
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Frontend (deploy separately)
+frontend/
+node_modules/
+
+# Documentation
+*.md
+!README.md
+
+# Logs
+*.log
+app-logs/
+backend-logs/
+backend-logs-test/
+
+# Tests
+tests/
+test/
+*_test.py
+test_*.py
+
+# Other
+.DS_Store
+Thumbs.db
+*.zip
