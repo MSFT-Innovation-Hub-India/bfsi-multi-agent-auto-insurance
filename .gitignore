@@ -95,6 +95,7 @@ credentials/
 *.yml
 DEPLOYMENT.md
 DEPLOYMENT-GUIDE.md
+DEPLOYMENT-CONTAINER-APPS.md
 scripts/
 startup-batch.sh
 api_server.py
