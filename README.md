@@ -93,10 +93,6 @@ npm run dev
 - Backend API: http://localhost:8001
 - API Docs: http://localhost:8001/docs
 
-## 🚀 Azure Deployment
-
-See [DEPLOYMENT.md](DEPLOYMENT.md) for complete Azure App Service deployment instructions.
-
 ### Quick Deploy Steps
 
 1. **Create Azure App Service**
@@ -116,7 +112,7 @@ az webapp config appsettings set --name vehicle-claims-api --settings @azure-con
 
 3. **Deploy code**
 ```bash
-# Using GitHub Actions (recommended - see .github/workflows/azure-deploy.yml)
+# Using GitHub Actions 
 # Or use Azure CLI
 az webapp up --name vehicle-claims-api --resource-group your-rg
 ```
@@ -214,17 +210,6 @@ vehicleinsurance-claimsprocessing/
 4. Push to branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
-## 📝 License
-
-This project is licensed under the MIT License.
-
-## 🆘 Support
-
-For issues and questions:
-- Check [DEPLOYMENT.md](DEPLOYMENT.md) for deployment troubleshooting
-- Review [SETUP.md](SETUP.md) for local development setup
-- Open an issue on GitHub
-
 ## 🙏 Acknowledgments
 
 - Built with Azure AI services
@@ -237,6 +222,3 @@ For issues and questions:
 - **Frontend**: Next.js 15, TypeScript, Tailwind CSS, shadcn/ui
 - **Azure Services**: OpenAI, Cosmos DB, Blob Storage, AI Search
 
-## 📄 License
-
-MIT License - see [LICENSE](LICENSE) for details
