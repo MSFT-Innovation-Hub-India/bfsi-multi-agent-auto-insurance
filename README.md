@@ -123,11 +123,6 @@ npm install
 npm run dev
 ```
 
-### 7. Access the application
-- **Frontend**: http://localhost:3000
-- **Backend API**: http://localhost:8001
-- **API Docs (Swagger)**: http://localhost:8001/docs
-
 ## ☁️ Deployment
 
 ### Option 1: Azure Container Apps (Recommended)
