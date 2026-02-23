@@ -28,21 +28,23 @@ import {
 } from '@/lib/api-service-realtime';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { getAgentOutputsByClaimId } from '@/lib/backend-db';
 
 function AgentWorkflowContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const claimId = searchParams.get('claimId');
   const claimantName = searchParams.get('claimantName');
+  const isCompleted = searchParams.get('completed') === 'true';
 
   const [agentStates, setAgentStates] = useState<{
     [key: number]: 'pending' | 'processing' | 'completed' | 'failed';
   }>({
-    1: 'pending',
-    2: 'pending',
-    3: 'pending',
-    4: 'pending',
-    5: 'pending',
+    1: isCompleted ? 'completed' : 'pending',
+    2: isCompleted ? 'completed' : 'pending',
+    3: isCompleted ? 'completed' : 'pending',
+    4: isCompleted ? 'completed' : 'pending',
+    5: isCompleted ? 'completed' : 'pending',
   });
 
   const [responsePopup, setResponsePopup] = useState<{
@@ -67,10 +69,51 @@ function AgentWorkflowContent() {
     currentStep: number;
     progress: number;
   }>({
-    status: 'processing',
-    currentStep: 1,
-    progress: 0,
+    status: isCompleted ? 'completed' : 'processing',
+    currentStep: isCompleted ? 5 : 1,
+    progress: isCompleted ? 100 : 0,
   });
+
+  // Fetch pre-stored agent data from Cosmos DB for completed claims
+  useEffect(() => {
+    if (!isCompleted || !claimId) return;
+    
+    const fetchStoredData = async () => {
+      try {
+        const outputs = await getAgentOutputsByClaimId(claimId);
+        console.log('📦 Cosmos output keys:', Object.keys(outputs));
+        const newResponses: { [key: number]: string } = {};
+        
+        // Step 1: Policy Basic Details (agent_type = main_policy_basic)
+        if (outputs['main_policy_basic']) {
+          newResponses[1] = outputs['main_policy_basic'].response_data || outputs['main_policy_basic'].response || '';
+        }
+        // Step 2: Coverage Assessment (agent_type = policy)
+        if (outputs['policy']) {
+          newResponses[2] = outputs['policy'].response_data || outputs['policy'].response || '';
+        }
+        // Step 3: Inspection (agent_type = inspection)
+        if (outputs['inspection']) {
+          newResponses[3] = outputs['inspection'].response_data || outputs['inspection'].response || '';
+        }
+        // Step 4: Bill Analysis (agent_type = bill_synthesis)
+        if (outputs['bill_synthesis']) {
+          newResponses[4] = outputs['bill_synthesis'].response_data || outputs['bill_synthesis'].response || '';
+        }
+        // Step 5: Final Decision (agent_type = final_synthesis)
+        if (outputs['final_synthesis']) {
+          newResponses[5] = outputs['final_synthesis'].response_data || outputs['final_synthesis'].response || '';
+        }
+        
+        setAgentResponses(newResponses);
+        console.log('✅ Loaded agent responses, steps with data:', Object.keys(newResponses));
+      } catch (error) {
+        console.error('Error fetching stored agent data:', error);
+      }
+    };
+    
+    fetchStoredData();
+  }, [isCompleted, claimId]);
 
   // Effect to set sequential agents to 'processing' when prerequisites are met
   // This ensures the loading spinner shows immediately when the card appears
@@ -91,7 +134,7 @@ function AgentWorkflowContent() {
 
   // Real-time API integration
   useEffect(() => {
-    if (!claimId || !claimantName) return;
+    if (!claimId || !claimantName || isCompleted) return;
 
     // Construct claim description
     const claimDescription = `Vehicle insurance claim for ${claimantName} - Claim ID: ${claimId}`;
@@ -200,15 +243,12 @@ function AgentWorkflowContent() {
   }, [claimId, claimantName]);
 
   const openResponsePopup = (agentName: string, step: number) => {
-    const response = agentResponses[step];
-    if (response) {
-      setResponsePopup({
-        isOpen: true,
-        agentName,
-        agentStep: step,
-        response,
-      });
-    }
+    setResponsePopup({
+      isOpen: true,
+      agentName,
+      agentStep: step,
+      response: '', // Will be read reactively from agentResponses
+    });
   };
 
   const closeResponsePopup = () => {
@@ -363,7 +403,7 @@ function AgentWorkflowContent() {
                         ? 'bg-white border-blue-400 shadow-lg shadow-blue-100'
                         : 'bg-white border-slate-300 shadow-sm'
                     } border-2 rounded-xl p-5 w-[240px] cursor-pointer hover:scale-[1.02] hover:shadow-xl transition-all duration-200`}
-                      onClick={() => agentStates[1] === 'completed' && agentResponses[1] && openResponsePopup('Policy Lookup Assistant', 1)}
+                      onClick={() => agentStates[1] === 'completed' && openResponsePopup('Policy Lookup Assistant', 1)}
                     >
                       <div className="flex flex-col items-center space-y-3">
                         <div className={`p-3 rounded-xl ${
@@ -416,7 +456,7 @@ function AgentWorkflowContent() {
                         ? 'bg-white border-blue-400 shadow-lg shadow-blue-100'
                         : 'bg-white border-slate-300 shadow-sm'
                     } border-2 rounded-xl p-5 w-[240px] cursor-pointer hover:scale-[1.02] hover:shadow-xl transition-all duration-200`}
-                      onClick={() => agentStates[2] === 'completed' && agentResponses[2] && openResponsePopup('Policy Coverage Assistant', 2)}
+                      onClick={() => agentStates[2] === 'completed' && openResponsePopup('Policy Coverage Assistant', 2)}
                     >
                       <div className="flex flex-col items-center space-y-3">
                         <div className={`p-3 rounded-xl ${
@@ -523,7 +563,7 @@ function AgentWorkflowContent() {
                         ? 'bg-white border-blue-400 shadow-lg shadow-blue-100'
                         : 'bg-white border-slate-300 shadow-sm'
                     } border-2 rounded-xl p-5 w-[240px] cursor-pointer hover:scale-[1.02] hover:shadow-xl transition-all duration-200`}
-                      onClick={() => agentStates[3] === 'completed' && agentResponses[3] && openResponsePopup('Claims Evidence Evaluator', 3)}
+                      onClick={() => agentStates[3] === 'completed' && openResponsePopup('Claims Evidence Evaluator', 3)}
                     >
                       <div className="flex flex-col items-center space-y-3">
                         <div className={`p-3 rounded-xl ${
@@ -595,7 +635,7 @@ function AgentWorkflowContent() {
                         ? 'bg-white border-blue-400 shadow-lg shadow-blue-100'
                         : 'bg-white border-slate-300 shadow-sm'
                     } border-2 rounded-xl p-5 w-[240px] cursor-pointer hover:scale-[1.02] hover:shadow-xl transition-all duration-200`}
-                      onClick={() => agentStates[4] === 'completed' && agentResponses[4] && openResponsePopup('Settlement Underwriter', 4)}
+                      onClick={() => agentStates[4] === 'completed' && openResponsePopup('Settlement Underwriter', 4)}
                     >
                       <div className="flex flex-col items-center space-y-3">
                         <div className={`p-3 rounded-xl ${
@@ -668,7 +708,7 @@ function AgentWorkflowContent() {
                         ? 'bg-white border-blue-400 shadow-lg shadow-blue-100'
                         : 'bg-white border-slate-300 shadow-sm'
                     } border-2 rounded-xl p-5 w-[240px] cursor-pointer hover:scale-[1.02] hover:shadow-xl transition-all duration-200`}
-                      onClick={() => agentStates[5] === 'completed' && agentResponses[5] && openResponsePopup('Final Decision Advisor', 5)}
+                      onClick={() => agentStates[5] === 'completed' && openResponsePopup('Final Decision Advisor', 5)}
                     >
                       <div className="flex flex-col items-center space-y-3">
                         <div className={`p-3 rounded-xl ${
@@ -966,7 +1006,7 @@ function AgentWorkflowContent() {
                         a: ({...props}) => <a className="text-blue-600 hover:text-blue-800 underline font-medium" target="_blank" rel="noopener noreferrer" {...props} />,
                       }}
                     >
-                      {responsePopup.response}
+                      {agentResponses[responsePopup.agentStep] || responsePopup.response || 'Loading agent response...'}
                     </ReactMarkdown>
                   </div>
                 </div>

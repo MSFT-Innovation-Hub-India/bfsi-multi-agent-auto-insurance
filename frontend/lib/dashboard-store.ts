@@ -72,6 +72,15 @@ const initialAgents: Agent[] = [
 // Mock data for claims
 const initialClaims: Claim[] = [
   {
+    id: 'CLM-2024-100',
+    claimantName: 'Diya S',
+    policyNumber: 'KA11MM1111',
+    vehicleType: 'Hyundai Grand i10 Sportz AT (2018)',
+    claimAmount: 60000,
+    status: 'approved',
+    submittedDate: '2024-11-10',
+  },
+  {
     id: 'CLM-2024-001',
     claimantName: 'Diya S',
     policyNumber: 'KA11MM1111',

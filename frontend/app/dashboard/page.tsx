@@ -212,6 +212,11 @@ export default function DashboardPage() {
 
   // Handle claim processing - Navigate to dedicated workflow page
   const handleProcessClaim = async (claim: Claim) => {
+    // For completed/approved claims, navigate to static workflow view
+    if (claim.status === 'approved') {
+      router.push(`/agent-workflow?claimId=${claim.id}&claimantName=${encodeURIComponent(claim.claimantName)}&completed=true`);
+      return;
+    }
     // Navigate to the agent workflow page with claim data
     router.push(`/agent-workflow?claimId=${claim.id}&claimantName=${encodeURIComponent(claim.claimantName)}`);
     return;
@@ -771,7 +776,7 @@ export default function DashboardPage() {
                               handleProcessClaim(claim);
                             }}
                           >
-                            View Live →
+                            {claim.status === 'approved' ? 'View Results →' : 'View Live →'}
                           </Button>
                         </div>
                       </div>
@@ -1286,8 +1291,8 @@ export default function DashboardPage() {
                                   <Button
                                     size="sm"
                                     onClick={() => handleProcessClaim(claim)}
-                                    disabled={claim.status === 'processing' || claim.status === 'approved'}
-                                    className={claim.status === 'pending' || claim.status === 'flagged' ? 'bg-blue-600 hover:bg-blue-700' : ''}
+                                    disabled={claim.status === 'processing'}
+                                    className={claim.status === 'pending' || claim.status === 'flagged' ? 'bg-blue-600 hover:bg-blue-700' : claim.status === 'approved' ? 'bg-green-600 hover:bg-green-700 text-white' : ''}
                                   >
                                     {claim.status === 'processing' ? (
                                       <>
@@ -1296,8 +1301,8 @@ export default function DashboardPage() {
                                       </>
                                     ) : claim.status === 'approved' ? (
                                       <>
-                                        <CheckCircle className="mr-2 h-4 w-4" />
-                                        Completed
+                                        <Eye className="mr-2 h-4 w-4" />
+                                        View Results
                                       </>
                                     ) : (
                                       <>
