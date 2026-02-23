@@ -68,6 +68,8 @@ frontend/.env
 frontend/.env.local
 frontend/.env.*.local
 
+frontend/lib/backend-db.ts
+
 # Testing
 .pytest_cache/
 .coverage
