@@ -277,7 +277,7 @@ az webapp up --name vehicle-claims-api --resource-group your-rg
 | **Azure OpenAI** | GPT-4o model deployment | Deploy GPT-4o model |
 | **Cosmos DB** | Agent memory & response storage | Database: `insurance`, Container: `data`, Partition Key: `/claim_id` |
 | **Blob Storage** | Claim document storage | Container: `vehicle-insurance` |
-| **AI Search** | Policy & document indexing | Indexes: `policy`, `insurance`, `bill` |
+| **AI Search** | Policy & document indexing | Indexes: `policy`, `insurance`, `bill` — see [Index Setup](#-index-setup-azure-ai-search) |
 
 ### Environment Variables
 
@@ -335,6 +335,12 @@ bfsi-multi-agent-auto-insurance/
 │   ├── synthesis_engine.py       #   Final decision synthesis
 │   └── models.py                 #   Data models (ClaimData, etc.)
 ├── instructions/                 # Agent instruction prompt templates
+├── index-creation/               # Programmatic AI Search index creation
+│   ├── README.md                 #   Setup and usage guide
+│   ├── create_index.py           #   Index creation & document ingestion script
+│   └── doc_index_config.py       #   Environment variable configuration loader
+├── index-creation-portal/        # Portal-based AI Search index setup guide
+│   └── index_setup-portal.md    #   Step-by-step Azure Portal wizard guide
 ├── frontend/                     # Next.js frontend application
 │   ├── Dockerfile                #   Frontend container image
 │   ├── app/                      #   Next.js app router pages
@@ -346,7 +352,37 @@ bfsi-multi-agent-auto-insurance/
         └── deploy-container-apps.yml  # CI/CD pipeline
 ```
 
-## 🔒 Security
+## � Index Setup (Azure AI Search)
+
+The system requires three Azure AI Search indexes to power the AI agents — `bill`, `policy`, and `insurance`. There are two ways to create them:
+
+### Option A — Azure Portal (Recommended for initial setup)
+
+Use the step-by-step portal wizard guide in [`index-creation-portal/index_setup-portal.md`](index-creation-portal/index_setup-portal.md).
+
+Repeat the wizard three times with the following Blob folder / index name combinations:
+
+| Index Name | Blob Folder | Agent |
+|---|---|---|
+| `bill` | `bills/` | Bill Analysis Agent |
+| `policy` | `policy/` | Policy Insight + Coverage Assessment Agents |
+| `insurance` | `inspection-reports/` | Inspection Agent |
+
+### Option B — Python Script (Programmatic / CI-CD)
+
+Use the script in [`index-creation/`](index-creation/) to ingest documents and create indexes programmatically.
+
+```bash
+cd index-creation
+# Configure your .env (see index-creation/README.md)
+python create_index.py
+```
+
+See [`index-creation/README.md`](index-creation/README.md) for full configuration details, command-line usage, and troubleshooting.
+
+---
+
+## �🔒 Security
 
 - **Managed Identity** — Uses `DefaultAzureCredential` for keyless Azure service authentication
 - **Environment Variables** — Credentials stored in Azure App/Container configuration (never in code)

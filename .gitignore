@@ -97,7 +97,12 @@ credentials/
 DEPLOYMENT.md
 DEPLOYMENT-GUIDE.md
 DEPLOYMENT-CONTAINER-APPS.md
-scripts/
+# Scripts folder - only track networking scripts and their documentation
+scripts/*
+!scripts/enable-azure-networking.cmd
+!scripts/enable-azure-networking.ps1
+!scripts/README.md
+!scripts/azure-networking.md
 startup-batch.sh
 api_server.py
 *logs/
