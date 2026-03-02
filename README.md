@@ -405,6 +405,25 @@ See [`index-creation/README.md`](index-creation/README.md) for full configuratio
 4. Push to branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
+## 🆘 Support
+
+For issues and questions:
+- Check [DEPLOYMENT.md](DEPLOYMENT.md) for deployment troubleshooting
+- Review [SETUP.md](SETUP.md) for local development setup
+- Open an issue on GitHub
+
+## 🙏 Acknowledgments
+
+- Built with Azure AI services
+- Uses GPT-4 for intelligent claim analysis
+- Powered by FastAPI and Next.js
+
+## 🛠️ Tech Stack
+
+- **Backend**: Python, FastAPI, Azure OpenAI (GPT-4o)
+- **Frontend**: Next.js 15, TypeScript, Tailwind CSS, shadcn/ui
+- **Azure Services**: OpenAI, Cosmos DB, Blob Storage, AI Search
+
 ## 📚 Additional Resources
 
 - [Azure Container Apps Documentation](https://learn.microsoft.com/azure/container-apps/)
